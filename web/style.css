@@ -15,6 +15,14 @@
   font-weight: 700;
   font-display: swap;
 }
+/* GNU Unifont, Thai block only — bitmap Thai that matches Monocraft; scaled so its x-height lines up */
+@font-face {
+  font-family: "Unifont Thai";
+  src: url("fonts/Unifont-Thai.otf") format("opentype");
+  unicode-range: U+0E00-0E7F;
+  size-adjust: 125%;
+  font-display: swap;
+}
 
 :root {
   --bg: #000000;
@@ -29,8 +37,8 @@
   --dim: #48443a;
   --blood: #ff5f4a;
 
-  /* Thai has no pixel font, so it falls through to squared Chakra Petch */
-  --f-term: "Monocraft", "Chakra Petch", ui-monospace, Menlo, Consolas, monospace;
+  /* Monocraft has no Thai, so Thai falls through to pixel Unifont */
+  --f-term: "Monocraft", "Unifont Thai", ui-monospace, Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; border-radius: 0 !important; }
