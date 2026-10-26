@@ -165,6 +165,7 @@ class AnimeStream:
     def __init__(self):
         self.emotion = "calm"
         self.seq = -1  # index of the last spoken segment
+        self.translated = True  # has segment `seq` got its translation yet?
         self._reset_line()
 
     def _reset_line(self):
@@ -193,7 +194,15 @@ class AnimeStream:
             return "sub"
         if not final and (len(s) < 2 and s[0] in ">＞»" or s.startswith("[") and "]" not in s and len(s) < MAX_TAG_LEN):
             return None  # can't tell yet
-        return "jp"
+        # The model sometimes forgets ">>". Decide by the first real character:
+        # Japanese → a line to speak, anything else (Thai, English) → translation.
+        body = TAG.sub("", s).lstrip()
+        if not body:
+            return "jp" if final else None
+        first = body[0]
+        if script(first) == "ja" or first in "「『（(…":
+            return "jp"
+        return "sub"
 
     def _visible(self) -> str:
         text = self.line.lstrip()
@@ -226,16 +235,23 @@ class AnimeStream:
         if visible[self.sent:]:
             out.append(("delta", self.kind, visible[self.sent:]))
         out.append(("line_end", self.kind))
+        tags = TAG.findall(self.line)
+        if tags:
+            self.emotion = tags[-1].lower()
         if self.kind == "jp":
-            tags = TAG.findall(self.line)
-            if tags:
-                self.emotion = tags[-1].lower()
             spoken = clean_for_speech(visible)
             if has_japanese(spoken):
                 self.seq += 1
+                self.translated = False
                 out.append(("segment", Segment(spoken, "ja", self.emotion)))
-        elif self.kind == "sub" and self.seq >= 0:
-            out.append(("sub", self.seq, visible))
+        elif self.kind == "sub":
+            # first translation after a Japanese line belongs to it; any extra
+            # stray line is shown on its own (seq -1: no voice)
+            if self.seq >= 0 and not self.translated:
+                self.translated = True
+                out.append(("sub", self.seq, visible))
+            else:
+                out.append(("sub", -1, visible))
         self._reset_line()
         return out
 

@@ -27,7 +27,8 @@ let ttsAvailable = false;
 let turnSpeaks = false; // is the current reply being voiced?
 let subs = new Map(); // anime style: seq → translation of that Japanese line
 let jpLines = new Map(); // seq → Japanese line
-let playingSeq = -1;
+let noAudio = new Set(); // segments whose audio failed
+let subSeq = -2; // which segment the subtitle is showing (-1 = a line with no voice)
 let anime = false; // persona speaking style: Japanese voice + translated text
 
 const prefs = loadPrefs();
@@ -36,17 +37,13 @@ const voice = new VoicePlayer({
   onLevel: (level, low, high) => avatar.setLevel(level, low, high),
   onSegment: (seg) => {
     setAvatar("speaking");
-    playingSeq = seg.seq;
     if (seg.emotion) avatar.setEmotion(seg.emotion);
-    // anime style: Japanese voice, translated subtitle (may arrive a moment later)
-    if (anime) showSubtitle(subs.get(seg.seq) || "…", seg.text);
-    else if (seg.text) showSubtitle(seg.text);
+    showSegmentSubtitle(seg.seq);
   },
   onIdle: () => {
-    playingSeq = -1;
     if (!busy) setAvatar("idle");
     avatar.setEmotion("calm");
-    fadeSubtitle();
+    // the last line stays on screen until the next one replaces it
   },
 });
 
@@ -157,8 +154,18 @@ function showSubtitle(text, jp = "") {
   subtitle.classList.add("on");
 }
 
-function fadeSubtitle() {
+function clearSubtitle() {
+  subSeq = -2;
   subtitle.classList.remove("on");
+}
+
+// Subtitle for segment `seq`: in anime style the Japanese line on top and its
+// translation below. The translation is generated after the Japanese line, so it
+// often arrives while — or after — that line is spoken; `sub` fills it in later.
+function showSegmentSubtitle(seq) {
+  subSeq = seq;
+  if (anime) showSubtitle(subs.get(seq) || "…", jpLines.get(seq) || "");
+  else showSubtitle(jpLines.get(seq) || "");
 }
 
 // ── log ───────────────────────────────────────────────
@@ -250,11 +257,12 @@ function handle(msg) {
       anime = msg.style === "anime";
       subs = new Map();
       jpLines = new Map();
+      noAudio = new Set();
+      subSeq = -2; // the previous answer's subtitle stays until this one has a line
       if (turnSpeaks) voice.beginTurn();
       current = addEntry("ciel");
       current.classList.add("streaming");
       setAvatar("thinking");
-      if (!prefs.voiceMode) fadeSubtitle();
       break;
 
     case "delta":
@@ -281,18 +289,27 @@ function handle(msg) {
       if (msg.audio) voice.addSegment(msg);
       else {
         avatar.setEmotion(msg.emotion);
-        if (prefs.voiceMode && !anime) showSubtitle(msg.text);
+        if (!anime) showSegmentSubtitle(msg.seq); // anime: wait for its translation
       }
       break;
 
     case "sub":
       subs.set(msg.seq, msg.text);
-      // voiced: update the line being spoken; text-only: show the latest pair
-      if (msg.seq === playingSeq || (!turnSpeaks && prefs.voiceMode)) showSubtitle(msg.text, jpLines.get(msg.seq) || "");
+      if (msg.seq < 0) {
+        // a line Ciel wrote without Japanese: nothing to say, just show it
+        subSeq = -1;
+        showSubtitle(msg.text);
+      } else if (msg.seq === subSeq || !turnSpeaks || noAudio.has(msg.seq)) {
+        // fill in the line on screen (even if its audio already finished),
+        // or follow the text when there is no voice for it
+        showSegmentSubtitle(msg.seq);
+      }
       break;
 
     case "audio_error":
       voice.failed(msg.seq);
+      noAudio.add(msg.seq);
+      if (!voice.playing) showSegmentSubtitle(msg.seq);
       break;
 
     case "audio_end":
@@ -419,7 +436,7 @@ $("#reset-btn").addEventListener("click", () => {
   if (busy || ws?.readyState !== WebSocket.OPEN) return;
   voice.stop();
   log.replaceChildren();
-  fadeSubtitle();
+  clearSubtitle();
   connectedBefore = false;
   ws.send(JSON.stringify({ type: "reset" }));
 });
