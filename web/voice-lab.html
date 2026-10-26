@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ciel · Voice Lab</title>
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="voice-lab.css">
+</head>
+<body class="lab">
+  <header class="bar">
+    <span class="name">◈ <b>CIEL</b></span>
+    <span class="epithet">ΦΩΝΗ · VOICE LAB</span>
+    <span class="fill"></span>
+    <a class="cmd" href="./">[กลับ]</a>
+  </header>
+  <div class="meander" aria-hidden="true"></div>
+
+  <main class="lab-main">
+    <p class="lab-intro">
+      จูนเสียงของ Ciel แล้วกด <b>[บันทึก]</b> ค่าจะใช้ทันทีกับคำตอบถัดไป
+      (เก็บไว้ที่ <code>data/voice.yaml</code> บนเซิร์ฟเวอร์ ไม่กระทบ git)
+    </p>
+    <p class="lab-status" id="lab-status">กำลังโหลด…</p>
+
+    <section class="panel" id="langs">
+      <div class="panel-title">┤ ΓΛΩΣΣΑ ├ <span class="faint">เสียงแต่ละภาษา</span></div>
+    </section>
+
+    <section class="panel" id="emotions">
+      <div class="panel-title">┤ ΠΑΘΟΣ ├ <span class="faint">อารมณ์ — บวกเพิ่มจากค่าของภาษา</span></div>
+    </section>
+
+    <div class="lab-actions">
+      <button class="cmd primary" id="save-btn">[บันทึก]</button>
+      <button class="cmd" id="reset-btn">[คืนค่าจากไฟล์นิสัย]</button>
+      <button class="cmd" id="yaml-btn">[ดู YAML]</button>
+    </div>
+    <pre class="yaml" id="yaml" hidden></pre>
+  </main>
+
+  <script type="module" src="voice-lab.js"></script>
+</body>
+</html>

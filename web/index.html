@@ -26,13 +26,19 @@
       <span class="epithet">ΣΟΦΙΑ · ΠΡΟΝΟΙΑ</span>
       <span class="fill" aria-hidden="true"></span>
       <span class="status"><span class="dot" id="status-dot">●</span> <span id="status-text">ΣΥΝΔΕΣΗ…</span></span>
+      <button class="cmd" id="voice-btn" title="ให้ Ciel อ่านคำตอบออกเสียง" hidden>[เสียง●]</button>
+      <button class="cmd" id="subs-btn" title="แสดงคำพูดใต้วงเวท" hidden>[ซับ●]</button>
+      <a class="cmd" href="voice-lab.html" title="จูนเสียงของ Ciel">[lab]</a>
       <button class="cmd" id="reset-btn" title="เริ่มบทสนทนาใหม่">[ใหม่]</button>
     </header>
     <div class="meander" aria-hidden="true"></div>
 
-    <section class="stage" id="stage" aria-hidden="true">
+    <!-- tap the circle: voice mode on/off, or stop Ciel mid-sentence -->
+    <section class="stage" id="stage" role="button" tabindex="0" aria-label="เข้าโหมดเสียง">
       <!-- Live2D model will stand in front of the circle later -->
       <div class="circle" id="circle" data-state="idle"></div>
+      <p class="subtitle" id="subtitle" aria-live="polite"></p>
+      <p class="stage-hint">แตะวงเวทเพื่อสลับโหมด</p>
     </section>
 
     <main class="term">
@@ -44,7 +50,7 @@
         <label class="ps1" for="input"><span id="ps1">มาสเตอร์</span><span class="ps1-host">@ciel:~$</span></label>
         <textarea id="input" rows="1" placeholder="พิมพ์คำสั่ง…" enterkeyhint="send"></textarea>
         <div class="prompt-actions">
-          <button type="button" class="cmd" id="mic-btn" disabled title="เร็วๆ นี้: คุยด้วยเสียง">[เสียง]</button>
+          <button type="button" class="cmd" id="mic-btn" disabled title="เร็วๆ นี้ (v0.3): พูดกับ Ciel ด้วยเสียง">[ไมค์]</button>
           <button type="submit" class="cmd primary" id="send-btn">[ส่ง ⏎]</button>
         </div>
       </form>

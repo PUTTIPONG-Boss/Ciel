@@ -38,6 +38,7 @@ class Settings:
     host: str = os.getenv("CIEL_HOST", "127.0.0.1")
     port: int = int(os.getenv("CIEL_PORT", "8080"))
     password: str = os.getenv("CIEL_PASSWORD", "")
+    tts: str = os.getenv("CIEL_TTS", "edge")
     auto_update: bool = _bool(os.getenv("CIEL_AUTO_UPDATE", "false"))
     update_branch: str = os.getenv("CIEL_UPDATE_BRANCH", "main")
     update_interval: int = int(os.getenv("CIEL_UPDATE_INTERVAL", "60"))

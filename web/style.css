@@ -131,6 +131,7 @@ body::after {
   color: var(--gold);
   font-family: var(--f-term);
   font-size: 13px;
+  text-decoration: none;
   cursor: pointer;
 }
 .cmd:hover:not(:disabled), .cmd:focus-visible { background: var(--gold); color: var(--bg); outline: none; }
@@ -143,17 +144,49 @@ body::after {
   grid-area: stage;
   position: relative;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   min-height: 0;
   overflow: hidden;
   padding: 8px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
 }
+.stage:focus-visible .circle { outline: 1px dashed var(--gold-dim); outline-offset: 4px; }
 
 .circle {
   position: relative;
-  width: min(100%, 560px);
-  height: 100%;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  max-width: 560px;
+  view-transition-name: circle;
 }
+
+.stage-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 4px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.subtitle {
+  display: none;
+  min-height: 3.4em;
+  max-width: min(40ch, calc(100% - 32px));
+  margin: 6px 0 4px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.subtitle.on { opacity: 1; }
 /* magic circle: stacked layers, each drawn once and rotated on the GPU (see avatar.js) */
 .mc {
   position: absolute;
@@ -171,8 +204,18 @@ body::after {
   overflow: visible;
   will-change: transform;
 }
-.mc-layer.rays { opacity: 0.7; transition: opacity 0.4s; }
+.mc-layer.rays { opacity: 0.7; }
+.mc-layer.ripple { opacity: 0; }
 .mc[data-state="thinking"] .rays { opacity: 1; }
+
+/* emotion tints the whole circle (one compositor filter, changes rarely) */
+.mc { transition: filter 0.6s; }
+.mc[data-emotion="shy"] { filter: hue-rotate(-32deg) saturate(1.5) brightness(1.08); }
+.mc[data-emotion="tease"] { filter: hue-rotate(115deg) saturate(1.2); }
+.mc[data-emotion="concern"] { filter: saturate(0.55) brightness(0.72); }
+
+/* when real audio drives the heart, the fake talk loop steps aside */
+.mc[data-audio] .mc-heart { animation: none; }
 
 .mc-heart { animation: mc-breathe 3.6s ease-in-out infinite alternate; }
 .mc[data-state="thinking"] .mc-heart { animation: mc-pulse 0.32s ease-in-out infinite alternate; }
@@ -186,9 +229,26 @@ body::after {
 @keyframes mc-talk { from { transform: scale(1.01); } to { transform: scale(1.09); } }
 @keyframes mc-twinkle { from { opacity: 0.25; } to { opacity: 1; } }
 
+/* ── voice mode: tap the circle, the log folds away ─────────── */
+
+.app.voice-mode {
+  grid-template-areas: "bar" "meander" "stage" "term" "status";
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}
+.voice-mode .log,
+.voice-mode .term-title { display: none; }
+.app.voice-mode .term { width: min(720px, calc(100% - 24px)); margin: 0 auto 10px !important; }
+.voice-mode .subtitle { display: block; }
+.voice-mode.no-subs .subtitle { visibility: hidden; }
+.voice-mode .stage-hint { display: none; }
+
+::view-transition-group(*) { animation-duration: 0.45s; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+
 /* ── terminal window ────────────────────────────────────────── */
 
 .term {
+  view-transition-name: term;
   grid-area: term;
   position: relative;
   display: flex;

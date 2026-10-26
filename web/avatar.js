@@ -109,8 +109,14 @@ class MagicCircle {
     el("feMergeNode", { in: "SourceGraphic" }, merge);
     el("circle", { r: 300, fill: "url(#mc-aura)" }, base);
 
+    // voice ripple: a ring that swells out of the heart with each syllable
+    this.ripple = this.#layer(this.root, "ripple");
+    el("circle", { r: 132, fill: "none", stroke: HI, "stroke-width": 2 }, this.ripple);
+    el("circle", { r: 140, fill: "none", stroke: GOLD, "stroke-width": 0.8, "stroke-dasharray": "1 5" }, this.ripple);
+
     // light rays
     const rays = this.#spin(this.#layer(this.root, "rays"), 400, -1);
+    this.rays = rays;
     for (let i = 0; i < 44; i++) {
       const deg = (360 / 44) * i + Math.random() * 4;
       const [x1, y1] = polar(70, deg);
@@ -124,6 +130,7 @@ class MagicCircle {
 
     // outer ring: Greek inscription
     const outer = this.#spin(this.#layer(), 180, 1);
+    this.outer = outer;
     el("circle", { r: 286, fill: "none", stroke: GOLD, "stroke-width": 0.6, opacity: 0.45 }, outer);
     el("circle", { r: 272, fill: "none", stroke: GOLD, "stroke-width": 1.4 }, outer);
     ticks(outer, 120, 276, 282, { stroke: GOLD, "stroke-width": 0.8, opacity: 0.7 });
@@ -202,8 +209,24 @@ class MagicCircle {
     this.#easeRate(SPEED[state] * this.calm);
   }
 
-  setLevel(v) {
-    this.heart.style.scale = (1 + v * 0.12).toFixed(3);
+  // Live voice → circle. Only `scale` / `opacity` on already-composited layers,
+  // so this is cheap even at 60 fps on a phone.
+  //   level: loudness 0..1, low: voice body 0..1, high: consonants/sibilance 0..1
+  setLevel(level, low = level, high = 0) {
+    const on = level > 0.01;
+    if (on !== this.audioOn) {
+      this.audioOn = on;
+      this.root.toggleAttribute("data-audio", on);
+    }
+    this.heart.style.scale = (1 + level * 0.16 + low * 0.05).toFixed(3);
+    this.ripple.style.scale = (1 + level * 0.55).toFixed(3);
+    this.ripple.style.opacity = Math.min(1, level * 1.6).toFixed(2);
+    this.rays.style.opacity = (0.6 + level * 0.4 + high * 0.3).toFixed(2);
+    this.outer.style.scale = (1 + high * 0.025).toFixed(4);
+  }
+
+  setEmotion(emotion) {
+    this.root.dataset.emotion = emotion || "calm";
   }
 }
 

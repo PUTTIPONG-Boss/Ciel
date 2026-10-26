@@ -23,6 +23,8 @@ class Persona:
     speech: dict = field(default_factory=dict)
     rules: list[str] = field(default_factory=list)
     examples: list[dict] = field(default_factory=list)
+    emotions: dict = field(default_factory=dict)  # tag → when to use it
+    voice: dict = field(default_factory=dict)  # raw voice: section, see tts.py
 
     @classmethod
     def from_dict(cls, data: dict) -> "Persona":
@@ -37,6 +39,8 @@ class Persona:
             speech={k: (fill(v) if isinstance(v, str) else [fill(x) for x in v]) for k, v in (data.get("speech") or {}).items()},
             rules=[fill(r) for r in data.get("rules", [])],
             examples=[{"user": fill(e["user"]), "ciel": fill(e["ciel"])} for e in data.get("examples", [])],
+            emotions={k: fill(v) for k, v in (data.get("emotions") or {}).items()},
+            voice=data.get("voice") or {},
         )
 
     def system_prompt(self, now: datetime | None = None) -> str:
@@ -55,6 +59,14 @@ class Persona:
         lines += [f"- {h}" for h in s.get("habits", [])]
         lines += ["", "# กฎ"]
         lines += [f"- {r}" for r in self.rules]
+        if self.emotions:
+            lines += [
+                "",
+                "# แท็กอารมณ์ (ควบคุมน้ำเสียงตอนพูด)",
+                "- ขึ้นต้นทุกคำตอบด้วยแท็กอารมณ์ และใส่แท็กใหม่หน้าประโยคที่อารมณ์เปลี่ยน เช่น [calm]...[shy]...",
+                "- แท็กจะถูกซ่อนจากหน้าจอ ใช้ได้เฉพาะแท็กเหล่านี้เท่านั้น:",
+            ]
+            lines += [f"  - [{tag}] {desc}" for tag, desc in self.emotions.items()]
         lines += [
             "",
             "# ข้อมูลตอนนี้",

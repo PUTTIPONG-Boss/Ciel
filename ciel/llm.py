@@ -92,13 +92,19 @@ class MockLLM:
     """Fake brain for working on the UI without a model installed."""
 
     REPLIES = [
-        "รับทราบค่ะ มาสเตอร์ ตอนนี้ฉันทำงานในโหมดทดสอบ (mock) อยู่นะคะ ยังไม่ได้เชื่อมต่อกับสมองจริง",
-        "ประมวลผลแล้วค่ะ ถ้าอยากคุยกับฉันจริงๆ ให้ติดตั้ง Ollama แล้วตั้ง CIEL_LLM=ollama ในไฟล์ .env นะคะ",
-        "ฉันได้ยินมาสเตอร์ชัดเจนค่ะ แต่ในโหมดทดสอบ ฉันตอบได้แค่ประโยคที่เตรียมไว้เท่านั้นนะคะ",
+        "[calm]รับทราบค่ะ มาสเตอร์ ตอนนี้ฉันทำงานในโหมดทดสอบ (mock) อยู่นะคะ [concern]ยังไม่ได้เชื่อมต่อกับสมองจริงค่ะ",
+        "[calm]ประมวลผลแล้วค่ะ ถ้าอยากคุยกับฉันจริงๆ ให้ตั้ง CIEL_LLM=ollama นะคะ [tease]หรือมาสเตอร์ลืมไปแล้วคะ?",
+        "[shy]เ-เรื่องแค่นี้ไม่ใช่เรื่องใหญ่หรอกค่ะ [calm]ในโหมดทดสอบ ฉันตอบได้แค่ประโยคที่เตรียมไว้เท่านั้นนะคะ",
     ]
+    BY_LANGUAGE = {
+        ("ญี่ปุ่น", "japanese", "日本語"): "[calm]了解しました、マスター。今はテストモードで動いています。[shy]べ、別に大したことじゃありませんよ。",
+        ("อังกฤษ", "english"): "[calm]Understood, master. I am running in test mode right now. [tease]Did you forget lunch again?",
+    }
 
     async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
-        text = random.choice(self.REPLIES)
+        last = messages[-1]["content"].lower() if messages else ""
+        text = next((r for keys, r in self.BY_LANGUAGE.items() if any(k in last for k in keys)), None)
+        text = text or random.choice(self.REPLIES)
         await asyncio.sleep(0.4)
         for i in range(0, len(text), 3):
             yield text[i:i + 3]

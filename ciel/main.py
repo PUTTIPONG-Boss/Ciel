@@ -8,11 +8,13 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, updater
+from . import auth, tts, updater
 from .config import WEB_DIR, settings
 from .llm import LLMError, create_llm
 from .persona import PersonaStore
+from .speech import SpeechStream, strip_tags
 from .version import info as version_info
+from .voice_api import create_router
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
 log = logging.getLogger("ciel")
@@ -38,6 +40,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Ciel", lifespan=lifespan)
+app.include_router(create_router(personas))
 
 
 class LoginBody(BaseModel):
@@ -81,8 +84,9 @@ def hello(persona) -> dict:
         "type": "hello",
         "name": persona.name,
         "user_name": persona.user_name,
-        "greeting": persona.greeting,
+        "greeting": strip_tags(persona.greeting),
         "model": settings.model if settings.llm != "mock" else "mock",
+        "tts": tts.enabled(),
         **version_info(),
     }
 
@@ -95,9 +99,10 @@ async def chat(ws: WebSocket):
         return
     await ws.accept()
 
+    channel = Channel(ws)
     history: list[dict] = []
     persona = personas.get()
-    await ws.send_json(hello(persona))
+    await channel.send_json(hello(persona))
 
     try:
         while True:
@@ -107,7 +112,7 @@ async def chat(ws: WebSocket):
             if kind == "reset":
                 history.clear()
                 persona = personas.get()  # pick up persona edits
-                await ws.send_json(hello(persona))
+                await channel.send_json(hello(persona))
                 continue
 
             if kind != "chat":
@@ -118,28 +123,90 @@ async def chat(ws: WebSocket):
 
             history.append({"role": "user", "content": text})
             del history[: max(0, len(history) - settings.max_history)]
-            messages = persona.build_messages(history)
+            speak = bool(msg.get("speak")) and tts.enabled()
 
-            await ws.send_json({"type": "start"})
-            reply = ""
             generating += 1
             try:
-                async for delta in llm.stream(messages):
-                    reply += delta
-                    await ws.send_json({"type": "delta", "text": delta})
+                reply = await reply_to(channel, persona, persona.build_messages(history), speak)
             except LLMError as e:
                 log.warning("LLM error: %s", e)
                 history.pop()
-                await ws.send_json({"type": "error", "message": str(e)})
+                await channel.send_json({"type": "error", "message": str(e)})
                 continue
             finally:
                 generating -= 1
 
-            reply = reply.strip()
+            # keep the [tags] in history so Ciel keeps using them
             history.append({"role": "assistant", "content": reply})
-            await ws.send_json({"type": "end", "text": reply})
     except WebSocketDisconnect:
         pass
+
+
+class Channel:
+    """Serialises sends: text deltas and audio come from different tasks."""
+
+    def __init__(self, ws: WebSocket):
+        self.ws = ws
+        self.lock = asyncio.Lock()
+
+    async def send_json(self, data: dict) -> None:
+        async with self.lock:
+            await self.ws.send_json(data)
+
+    async def send_bytes(self, data: bytes) -> None:
+        async with self.lock:
+            await self.ws.send_bytes(data)
+
+
+async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool) -> str:
+    """Streams one reply. Text goes out as `delta`s; each finished sentence goes
+    out as a `segment` (language + emotion, drives the circle) and, when
+    speaking, as a binary frame: 4-byte big-endian seq + MP3 bytes, in order."""
+    stream = SpeechStream()
+    voice_cfg = tts.load_config(persona.voice) if speak else None
+    audio_jobs: asyncio.Queue = asyncio.Queue()
+    limit = asyncio.Semaphore(2)  # don't hammer the TTS service
+    seq = 0
+
+    async def synth(seg) -> bytes:
+        async with limit:
+            return await tts.synthesize(seg.text, **tts.prosody(voice_cfg, seg.lang, seg.emotion))
+
+    async def send_audio_in_order() -> None:
+        while (job := await audio_jobs.get()) is not None:
+            n, task = job
+            try:
+                await channel.send_bytes(n.to_bytes(4, "big") + await task)
+            except tts.TTSError as e:
+                log.warning("%s", e)
+                await channel.send_json({"type": "audio_error", "seq": n})
+        await channel.send_json({"type": "audio_end"})
+
+    async def emit(shown: str, segments) -> None:
+        nonlocal seq
+        if shown:
+            await channel.send_json({"type": "delta", "text": shown})
+        for seg in segments:
+            gain = tts.gain(tts.prosody(voice_cfg, seg.lang, seg.emotion)["volume"]) if speak else 1
+            await channel.send_json({"type": "segment", "seq": seq, "lang": seg.lang, "emotion": seg.emotion, "text": seg.text, "audio": speak, "gain": gain})
+            if speak:
+                await audio_jobs.put((seq, asyncio.create_task(synth(seg))))
+            seq += 1
+
+    sender = asyncio.create_task(send_audio_in_order()) if speak else None
+    await channel.send_json({"type": "start", "speak": speak})
+    raw = ""
+    try:
+        async for delta in llm.stream(messages):
+            raw += delta
+            await emit(*stream.feed(delta))
+        await emit(*stream.flush())
+        await channel.send_json({"type": "end", "text": strip_tags(raw)})
+    finally:
+        if sender:
+            await audio_jobs.put(None)
+            await sender
+    return raw.strip()
 
 
 # Served last so /api and /ws take priority

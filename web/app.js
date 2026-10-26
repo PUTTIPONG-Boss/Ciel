@@ -1,9 +1,12 @@
 import { createAvatar } from "./avatar.js";
+import { VoicePlayer } from "./voice.js";
 
 const $ = (s) => document.querySelector(s);
+const app = $(".app");
 const log = $("#log");
 const input = $("#input");
 const sendBtn = $("#send-btn");
+const subtitle = $("#subtitle");
 
 const STATES = {
   idle: ["ΗΡΕΜΙΑ", "พร้อมรับคำสั่ง"],
@@ -20,7 +23,40 @@ let retry = 0;
 let connectedBefore = false;
 let userName = "มาสเตอร์";
 let running = null; // {version, commit} the page was loaded with
+let ttsAvailable = false;
+let turnSpeaks = false; // is the current reply being voiced?
+
+const prefs = loadPrefs();
 const avatar = await createAvatar($("#stage"));
+const voice = new VoicePlayer({
+  onLevel: (level, low, high) => avatar.setLevel(level, low, high),
+  onSegment: (seg) => {
+    setAvatar("speaking");
+    if (seg.emotion) avatar.setEmotion(seg.emotion);
+    if (seg.text) showSubtitle(seg.text);
+  },
+  onIdle: () => {
+    if (!busy) setAvatar("idle");
+    avatar.setEmotion("calm");
+    fadeSubtitle();
+  },
+});
+
+// ── prefs (per device) ────────────────────────────────
+
+function loadPrefs() {
+  try {
+    return { voiceOut: true, voiceMode: false, subtitles: true, ...JSON.parse(localStorage.getItem("ciel.prefs") || "{}") };
+  } catch {
+    return { voiceOut: true, voiceMode: false, subtitles: true };
+  }
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem("ciel.prefs", JSON.stringify(prefs));
+  } catch {}
+}
 
 // ── status ────────────────────────────────────────────
 
@@ -37,7 +73,7 @@ function setBusy(v) {
 
 function setAvatar(state) {
   avatar.setState(state);
-  document.querySelector(".app").dataset.state = state;
+  app.dataset.state = state;
   const [greek, thai] = STATES[state];
   $("#state-greek").textContent = greek;
   $("#state-thai").textContent = thai;
@@ -45,6 +81,75 @@ function setAvatar(state) {
 
 function showVersion(v) {
   $("#sl-version").textContent = `v${v.version}${v.commit ? ` · ${v.commit}` : ""}`;
+}
+
+// ── voice mode & toggles ──────────────────────────────
+
+const speakNow = () => ttsAvailable && (prefs.voiceMode || prefs.voiceOut);
+
+function renderToggles() {
+  app.classList.toggle("voice-mode", prefs.voiceMode);
+  app.classList.toggle("no-subs", !prefs.subtitles);
+  $("#voice-btn").textContent = prefs.voiceOut ? "[เสียง●]" : "[เสียง○]";
+  $("#voice-btn").hidden = !ttsAvailable || prefs.voiceMode;
+  $("#subs-btn").textContent = prefs.subtitles ? "[ซับ●]" : "[ซับ○]";
+  $("#subs-btn").hidden = !prefs.voiceMode;
+  $("#stage").setAttribute("aria-label", prefs.voiceMode ? "ออกจากโหมดเสียง" : "เข้าโหมดเสียง");
+}
+
+function setVoiceMode(on) {
+  const apply = () => {
+    prefs.voiceMode = on;
+    savePrefs();
+    renderToggles();
+    if (!on) scrollDown();
+  };
+  // morph smoothly where supported (Chrome / Android)
+  if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    document.startViewTransition(apply);
+  } else {
+    apply();
+  }
+}
+
+// Tap the circle: interrupt Ciel if she is talking, otherwise switch modes
+$("#stage").addEventListener("click", () => {
+  voice.unlock();
+  if (voice.playing) {
+    voice.stop();
+    addEntry("note", "หยุดพูดแล้ว");
+    return;
+  }
+  setVoiceMode(!prefs.voiceMode);
+});
+$("#stage").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    $("#stage").click();
+  }
+});
+
+$("#voice-btn").addEventListener("click", () => {
+  voice.unlock();
+  prefs.voiceOut = !prefs.voiceOut;
+  if (!prefs.voiceOut) voice.stop();
+  savePrefs();
+  renderToggles();
+});
+
+$("#subs-btn").addEventListener("click", () => {
+  prefs.subtitles = !prefs.subtitles;
+  savePrefs();
+  renderToggles();
+});
+
+function showSubtitle(text) {
+  subtitle.textContent = text;
+  subtitle.classList.add("on");
+}
+
+function fadeSubtitle() {
+  subtitle.classList.remove("on");
 }
 
 // ── log ───────────────────────────────────────────────
@@ -84,17 +189,22 @@ function scrollDown() {
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.binaryType = "arraybuffer";
 
   ws.onopen = () => {
     retry = 0;
     setBusy(false);
   };
 
-  ws.onmessage = (e) => handle(JSON.parse(e.data));
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) voice.addAudio(e.data);
+    else handle(JSON.parse(e.data));
+  };
 
   ws.onclose = (e) => {
     if (e.code === 4401) return showLogin();
     setStatus("offline", "ΑΠΟΣΥΝΔΕΣΗ");
+    voice.stop();
     setAvatar("idle");
     if (current) finish();
     busy = false;
@@ -110,6 +220,8 @@ function handle(msg) {
       $("#sl-model").textContent = msg.model ?? "—";
       userName = msg.user_name || userName;
       $("#ps1").textContent = userName;
+      ttsAvailable = !!msg.tts;
+      renderToggles();
       if (checkVersion(msg)) return;
       if (connectedBefore && log.children.length) {
         addEntry("note", "เชื่อมต่อใหม่แล้ว — บทสนทนาก่อนหน้าจะไม่ถูกจำ");
@@ -120,19 +232,39 @@ function handle(msg) {
       break;
 
     case "start":
+      turnSpeaks = !!msg.speak;
+      if (turnSpeaks) voice.beginTurn();
       current = addEntry("ciel");
       current.classList.add("streaming");
       setAvatar("thinking");
+      if (!prefs.voiceMode) fadeSubtitle();
       break;
 
     case "delta":
       if (!current) current = addEntry("ciel");
-      if (!pending && !current.body.textContent) setAvatar("speaking");
+      // voiced replies switch to "speaking" when the audio actually starts
+      if (!turnSpeaks && !pending && !current.body.textContent) setAvatar("speaking");
       pending += msg.text;
       if (!flushQueued) {
         flushQueued = true;
         requestAnimationFrame(flush);
       }
+      break;
+
+    case "segment":
+      if (msg.audio) voice.addSegment(msg);
+      else {
+        avatar.setEmotion(msg.emotion);
+        if (prefs.voiceMode) showSubtitle(msg.text);
+      }
+      break;
+
+    case "audio_error":
+      voice.failed(msg.seq);
+      break;
+
+    case "audio_end":
+      voice.end();
       break;
 
     case "end":
@@ -143,6 +275,7 @@ function handle(msg) {
 
     case "error":
       if (current && !current.body.textContent) current.remove();
+      voice.stop();
       finish();
       addEntry("error", msg.message);
       break;
@@ -163,7 +296,11 @@ function finish() {
   pending = "";
   current?.classList.remove("streaming");
   current = null;
-  setAvatar("idle");
+  // a voiced reply stays "thinking" until its audio starts, then the player takes over
+  if (!voice.active) {
+    setAvatar("idle");
+    avatar.setEmotion("calm");
+  }
   setBusy(false);
 }
 
@@ -176,7 +313,7 @@ function checkVersion(v) {
     return false;
   }
   if (v.version === running.version && v.commit === running.commit) return false;
-  if (busy) return false; // try again after this reply
+  if (busy || voice.playing) return false; // try again after this reply
   addEntry("note", `ตรวจพบเวอร์ชันใหม่ v${v.version} · ${v.commit} — กำลังโหลดใหม่…`);
   setTimeout(() => location.reload(), 1500);
   return true;
@@ -196,8 +333,10 @@ async function pollVersion() {
 function send() {
   const text = input.value.trim();
   if (!text || busy || ws?.readyState !== WebSocket.OPEN) return;
+  voice.unlock(); // we're inside a user gesture: allowed to start audio
+  voice.stop(); // a new question interrupts the old answer
   addEntry("user", text);
-  ws.send(JSON.stringify({ type: "chat", text }));
+  ws.send(JSON.stringify({ type: "chat", text, speak: speakNow() }));
   input.value = "";
   autosize();
   setBusy(true);
@@ -225,7 +364,9 @@ input.addEventListener("input", autosize);
 
 $("#reset-btn").addEventListener("click", () => {
   if (busy || ws?.readyState !== WebSocket.OPEN) return;
+  voice.stop();
   log.replaceChildren();
+  fadeSubtitle();
   connectedBefore = false;
   ws.send(JSON.stringify({ type: "reset" }));
 });
@@ -260,6 +401,7 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
+renderToggles();
 const tick = () => ($("#sl-clock").textContent = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
 tick();
 setInterval(tick, 15000);
