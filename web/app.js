@@ -35,6 +35,7 @@ function setBusy(v) {
 
 function setAvatar(state) {
   avatar.setState(state);
+  document.querySelector(".app").dataset.state = state;
   const [greek, thai] = STATES[state];
   $("#state-greek").textContent = greek;
   $("#state-thai").textContent = thai;
@@ -56,9 +57,9 @@ function addEntry(role, text = "") {
     meta.className = "meta";
     const who = document.createElement("span");
     who.className = "who";
-    who.textContent = role === "ciel" ? "◈ CIEL" : `› ${userName}`;
+    who.textContent = role === "ciel" ? "CIEL >" : `${userName} $`;
     const time = document.createElement("span");
-    time.textContent = `[${clock()}]`;
+    time.textContent = `[${clock()}] `;
     meta.append(time, who);
     entry.append(meta);
   }
@@ -106,7 +107,7 @@ function handle(msg) {
       document.title = msg.name;
       $("#sl-model").textContent = msg.model ?? "—";
       userName = msg.user_name || userName;
-      $("#ps1").textContent = `${userName} ›`;
+      $("#ps1").textContent = userName;
       if (checkVersion(msg)) return;
       if (connectedBefore && log.children.length) {
         addEntry("note", "เชื่อมต่อใหม่แล้ว — บทสนทนาก่อนหน้าจะไม่ถูกจำ");

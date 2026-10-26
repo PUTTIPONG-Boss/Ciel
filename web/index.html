@@ -4,85 +4,71 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Ciel</title>
-  <meta name="theme-color" content="#050807">
+  <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ciel">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preload" href="fonts/Monocraft.otf" as="font" type="font/otf" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:wght@500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500&family=Noto+Sans+Runic&display=swap" rel="stylesheet">
+  <!-- Chakra Petch: squared Thai to sit next to the pixel font · EB Garamond + Noto Sans Runic: magic circle only -->
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=EB+Garamond:wght@500&family=Noto+Sans+Runic&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="atmos" aria-hidden="true"></div>
-
   <div class="app">
     <header class="bar">
-      <div class="sigil" aria-hidden="true">◈</div>
-      <div class="title">
-        <span class="name" id="brand-name">CIEL</span>
-        <span class="epithet">ΣΟΦΙΑ · ΠΡΟΝΟΙΑ</span>
-      </div>
-      <div class="status">
-        <span class="dot" id="status-dot"></span>
-        <span id="status-text">ΣΥΝΔΕΣΗ…</span>
-      </div>
-      <button class="cmd" id="reset-btn" title="เริ่มบทสนทนาใหม่">[ ใหม่ ]</button>
+      <span class="name">◈ <b id="brand-name">CIEL</b></span>
+      <span class="epithet">ΣΟΦΙΑ · ΠΡΟΝΟΙΑ</span>
+      <span class="fill" aria-hidden="true"></span>
+      <span class="status"><span class="dot" id="status-dot">●</span> <span id="status-text">ΣΥΝΔΕΣΗ…</span></span>
+      <button class="cmd" id="reset-btn" title="เริ่มบทสนทนาใหม่">[ใหม่]</button>
     </header>
     <div class="meander" aria-hidden="true"></div>
 
     <section class="stage" id="stage" aria-hidden="true">
       <!-- Live2D model will stand in front of the circle later -->
       <div class="circle" id="circle" data-state="idle"></div>
-      <div class="state-caption">
-        <span class="rule"></span>
-        <span id="state-greek">ΗΡΕΜΙΑ</span>
-        <span class="state-thai" id="state-thai">พร้อมรับคำสั่ง</span>
-        <span class="rule"></span>
-      </div>
     </section>
 
-    <main class="term frame">
-      <div class="term-head">
-        <span>ΔΙΑΛΟΓΟΣ</span>
-        <span class="faint">// บันทึกการสนทนา</span>
-      </div>
+    <main class="term">
+      <div class="term-title"><span>┤ ΔΙΑΛΟΓΟΣ ├</span><span class="faint">บันทึกการสนทนา</span></div>
 
       <div class="log" id="log" aria-live="polite"></div>
 
       <form class="prompt" id="composer" autocomplete="off">
-        <label class="ps1" for="input" id="ps1">มาสเตอร์ ›</label>
+        <label class="ps1" for="input"><span id="ps1">มาสเตอร์</span><span class="ps1-host">@ciel:~$</span></label>
         <textarea id="input" rows="1" placeholder="พิมพ์คำสั่ง…" enterkeyhint="send"></textarea>
         <div class="prompt-actions">
-          <button type="button" class="cmd" id="mic-btn" disabled title="เร็วๆ นี้: คุยด้วยเสียง">[ ◉ เสียง ]</button>
-          <button type="submit" class="cmd primary" id="send-btn">[ ส่ง ↵ ]</button>
+          <button type="button" class="cmd" id="mic-btn" disabled title="เร็วๆ นี้: คุยด้วยเสียง">[เสียง]</button>
+          <button type="submit" class="cmd primary" id="send-btn">[ส่ง ⏎]</button>
         </div>
       </form>
     </main>
 
     <footer class="statusline">
-      <span>ΜΟΝΤΕΛΟ <b id="sl-model">—</b></span>
-      <span class="sep">│</span>
-      <span id="sl-version" title="เวอร์ชันที่กำลังทำงาน">v—</span>
-      <span class="sep clock-sep">│</span>
-      <span class="clock">ΩΡΑ <b id="sl-clock">--:--</b></span>
+      <span class="mode" id="state-greek">ΗΡΕΜΙΑ</span>
+      <span class="mode-text" id="state-thai">พร้อมรับคำสั่ง</span>
+      <span class="fill"></span>
+      <span class="seg"><span id="sl-model">—</span></span>
+      <span class="seg ver" id="sl-version" title="เวอร์ชันที่กำลังทำงาน">v—</span>
+      <span class="seg clock" id="sl-clock">--:--</span>
     </footer>
   </div>
 
   <div class="login" id="login" hidden>
-    <form class="login-card frame" id="login-form">
-      <div class="login-sigil" aria-hidden="true">◈</div>
-      <h1>CIEL</h1>
+    <form class="login-card" id="login-form">
+      <pre class="login-banner" aria-hidden="true">◈ C I E L ◈</pre>
       <p class="login-greek">ΤΑΥΤΟΤΗΤΑ</p>
       <p class="login-thai">กรุณายืนยันตัวตนค่ะ มาสเตอร์</p>
       <div class="login-field">
-        <label for="password">κλειδί ›</label>
+        <label for="password">κλειδί&gt;</label>
         <input type="password" id="password" autocomplete="current-password" required>
       </div>
-      <button type="submit" class="cmd primary wide">[ เข้าสู่ระบบ ]</button>
+      <button type="submit" class="cmd primary wide">[เข้าสู่ระบบ]</button>
       <p class="login-error" id="login-error"></p>
     </form>
   </div>

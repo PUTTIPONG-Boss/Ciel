@@ -20,6 +20,7 @@ log = logging.getLogger("ciel")
 # Windows sometimes maps .js to text/plain in the registry, which breaks ES modules
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("font/otf", ".otf")
 
 llm = create_llm(settings)
 personas = PersonaStore(settings.persona_path)
