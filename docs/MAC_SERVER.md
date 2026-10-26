@@ -11,11 +11,16 @@
 | โมเดล | `qwen3:8b` ผ่าน Ollama (ปิดโหมด think) |
 | เวลาตอบ | ข้อความแรกหลังโหลดโมเดล ~24 วินาที, ข้อความถัดไป ~9 วินาที |
 | Python | 3.12 (venv ที่ `~/Ciel/.venv`) |
+| เวอร์ชัน | v0.1.2 (b4ec856) อัปเดตอัตโนมัติ: เปิด |
 | บนเครื่อง Mac | http://localhost:8080 |
 | จากมือถือ/เครื่องอื่น | https://boss-puttipong.tail6857ad.ts.net (ใช้ได้เฉพาะเครื่องที่ล็อกอิน Tailscale บัญชีเดียวกัน) |
 
-**ขั้นที่เสร็จแล้ว:** 1–8 (เครื่องมือ, Ollama, Ciel, `.env`, ทดสอบแชท, LaunchAgent, Tailscale Serve)
-**ที่เหลือ:** ทดสอบบนมือถือ Android และตั้งค่าให้ Mac ไม่ sleep (ขั้นที่ 9)
+**ขั้นที่เสร็จแล้ว:** 1–8 (เครื่องมือ, Ollama, Ciel, `.env`, ทดสอบแชท, LaunchAgent, Tailscale Serve) และ MAC_UPDATE ขั้นที่ 1–4
+(v0.1.2 รันอยู่, `/api/health` ตรงกับ commit, log ขึ้น `auto-update on: checking origin/main every 60s`, ฟอนต์ตอบ 200 ทั้ง localhost และผ่าน ts.net)
+**ที่เหลือ:**
+- ทดสอบหน้าตาใหม่บนมือถือ Android (ยังไม่ได้ยืนยัน)
+- ขั้นที่ 9 (ไม่ให้ Mac sleep): ติดตั้ง AlDente แล้ว ส่วนตั้ง Charge Limit 80%, Battery → Prevent automatic sleeping และ Login Items ของ Ollama ยังไม่ได้ยืนยัน
+- Tailscale อยู่ใน Login Items แล้ว
 
 ## สิ่งที่ฝั่ง Windows ควรรู้
 
