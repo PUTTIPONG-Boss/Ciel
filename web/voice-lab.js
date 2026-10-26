@@ -5,7 +5,7 @@ const LANG_NAMES = { th: "ไทย", ja: "日本語", en: "English" };
 const LANG_PREFIX = { th: "th-", ja: "ja-", en: "en-" };
 const RANGES = { rate: [-50, 50, "%"], pitch: [-40, 40, "Hz"], volume: [-50, 50, "%"] };
 const EMO_RANGES = { rate: [-30, 30, "%"], pitch: [-30, 30, "Hz"], volume: [-40, 40, "%"] };
-const EMO_NAMES = { calm: "สุขุม", shy: "เขิน", tease: "แซว", concern: "เป็นห่วง" };
+const EMO_NAMES = { calm: "เย็นชา", shy: "เขิน", tease: "กวน", concern: "เป็นห่วง", pout: "หึง/งอน" };
 
 let state = null; // the config being edited
 let saved = ""; // JSON of the last saved config, to show unsaved changes

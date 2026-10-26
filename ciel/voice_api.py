@@ -10,7 +10,7 @@ from .speech import SpeechStream
 
 SAMPLES = {
     "th": "[calm]รับทราบค่ะ มาสเตอร์ วิเคราะห์เสร็จแล้วนะคะ [shy]เ-เรื่องแค่นี้ ไม่ใช่เรื่องใหญ่หรอกค่ะ",
-    "ja": "[calm]了解しました、マスター。分析が完了しました。[shy]べ、別に大したことじゃありませんよ。",
+    "ja": "[calm]……おかえりなさい、マスター。[pout]別に、待ってたわけじゃないですけど。[shy]な、何ですか急に……。",
     "en": "[calm]Understood, master. Analysis complete. [tease]Did you forget lunch again?",
 }
 

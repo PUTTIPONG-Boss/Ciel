@@ -216,6 +216,7 @@ body::after {
 .mc[data-emotion="shy"] { filter: hue-rotate(-32deg) saturate(1.5) brightness(1.08); }
 .mc[data-emotion="tease"] { filter: hue-rotate(115deg) saturate(1.2); }
 .mc[data-emotion="concern"] { filter: saturate(0.55) brightness(0.72); }
+.mc[data-emotion="pout"] { filter: hue-rotate(-75deg) saturate(1.3) brightness(0.9); }
 
 /* when real audio drives the heart, the fake talk loop steps aside */
 .mc[data-audio] .mc-heart { animation: none; }

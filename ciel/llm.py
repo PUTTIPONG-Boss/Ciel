@@ -16,7 +16,7 @@ class LLMError(Exception):
 
 
 class LLM(Protocol):
-    def stream(self, messages: list[dict]) -> AsyncIterator[str]: ...
+    def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]: ...
 
 
 class ThinkFilter:
@@ -56,20 +56,29 @@ class OllamaLLM:
     def __init__(self, s: Settings):
         self.s = s
         self.client = httpx.AsyncClient(base_url=s.ollama_url, timeout=httpx.Timeout(300, connect=5))
+        self.no_think_param: set[str] = set()  # models whose template rejects "think"
 
-    async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
+    async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:
+        model = model or self.s.model
         payload = {
-            "model": self.s.model,
+            "model": model,
             "messages": messages,
             "stream": True,
-            "think": self.s.think,
             "options": {"temperature": self.s.temperature, "num_ctx": self.s.num_ctx},
         }
+        if model not in self.no_think_param:
+            payload["think"] = self.s.think
         think = ThinkFilter()
         try:
             async with self.client.stream("POST", "/api/chat", json=payload) as r:
                 if r.status_code != 200:
                     body = (await r.aread()).decode(errors="ignore")
+                    # Fine-tunes (e.g. Shisa) may ship a chat template without thinking support
+                    if "think" in body and "think" in payload:
+                        self.no_think_param.add(model)
+                        async for text in self.stream(messages, model):
+                            yield text
+                        return
                     raise LLMError(f"Ollama ตอบกลับ {r.status_code}: {body[:200]}")
                 async for line in r.aiter_lines():
                     if not line:
@@ -109,7 +118,7 @@ class MockLLM:
     ]
     ANIME_EN = "[calm]了解しました、マスター。\n>> Understood, master.\n[tease]今日も一緒に頑張りましょうね。\n>> Let's do our best together today."
 
-    async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
+    async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:
         last = messages[-1]["content"].lower() if messages else ""
         if messages and ">> " in messages[0]["content"]:  # persona uses the anime layout
             text = self.ANIME_EN if any(c.isascii() and c.isalpha() for c in last) and not any("฀" <= c <= "๿" for c in last) else random.choice(self.ANIME)

@@ -17,7 +17,7 @@ from .config import ROOT, settings
 log = logging.getLogger("ciel.tts")
 
 LANGS = ("th", "ja", "en")
-EMOTIONS = ("calm", "shy", "tease", "concern")
+EMOTIONS = ("calm", "shy", "tease", "concern", "pout")
 OVERRIDE_PATH = ROOT / "data" / "voice.yaml"
 
 DEFAULT_VOICE = {
@@ -31,6 +31,7 @@ DEFAULT_VOICE = {
         "shy": {"rate": 8, "pitch": 14, "volume": -5},
         "tease": {"rate": 5, "pitch": 8, "volume": 0},
         "concern": {"rate": -10, "pitch": -4, "volume": -10},
+        "pout": {"rate": -10, "pitch": -6, "volume": -10},
     },
 }
 
