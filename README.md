@@ -11,6 +11,8 @@
 
 ## เริ่มใช้งาน
 
+> ติดตั้งบน Mac แบบให้ Claude ทำให้: ดู [docs/SETUP_MAC.md](docs/SETUP_MAC.md)
+
 ### 1. ติดตั้ง Ollama และโหลดโมเดล
 
 ดาวน์โหลดจาก <https://ollama.com> แล้วรัน:
