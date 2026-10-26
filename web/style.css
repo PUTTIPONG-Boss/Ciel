@@ -154,8 +154,37 @@ body::after {
   width: min(100%, 560px);
   height: 100%;
 }
-/* absolutely placed so the circle never sizes the stage; viewBox "meet" keeps it fitted */
-.circle svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* magic circle: stacked layers, each drawn once and rotated on the GPU (see avatar.js) */
+.mc {
+  position: absolute;
+  inset: 0;
+  width: var(--mc-size, 100%);
+  height: var(--mc-size, 100%);
+  margin: auto;
+  contain: strict;
+}
+.mc-layer, .mc-heart, .mc-spin {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  will-change: transform;
+}
+.mc-layer.rays { opacity: 0.7; transition: opacity 0.4s; }
+.mc[data-state="thinking"] .rays { opacity: 1; }
+
+.mc-heart { animation: mc-breathe 3.6s ease-in-out infinite alternate; }
+.mc[data-state="thinking"] .mc-heart { animation: mc-pulse 0.32s ease-in-out infinite alternate; }
+.mc[data-state="speaking"] .mc-heart { animation: mc-talk 0.17s ease-in-out infinite alternate; }
+
+.motes-a { animation: mc-twinkle 2.3s ease-in-out infinite alternate; }
+.motes-b { animation: mc-twinkle 3.1s ease-in-out -1.4s infinite alternate; }
+
+@keyframes mc-breathe { to { transform: scale(1.018); } }
+@keyframes mc-pulse { to { transform: scale(1.035); } }
+@keyframes mc-talk { from { transform: scale(1.01); } to { transform: scale(1.09); } }
+@keyframes mc-twinkle { from { opacity: 0.25; } to { opacity: 1; } }
 
 /* ── terminal window ────────────────────────────────────────── */
 

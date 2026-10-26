@@ -14,6 +14,8 @@ const STATES = {
 let ws = null;
 let busy = false;
 let current = null; // the Ciel entry currently streaming
+let pending = ""; // streamed text not yet painted
+let flushQueued = false;
 let retry = 0;
 let connectedBefore = false;
 let userName = "มาสเตอร์";
@@ -125,12 +127,16 @@ function handle(msg) {
 
     case "delta":
       if (!current) current = addEntry("ciel");
-      if (!current.body.textContent) setAvatar("speaking");
-      current.body.textContent += msg.text;
-      scrollDown();
+      if (!pending && !current.body.textContent) setAvatar("speaking");
+      pending += msg.text;
+      if (!flushQueued) {
+        flushQueued = true;
+        requestAnimationFrame(flush);
+      }
       break;
 
     case "end":
+      flush();
       if (current) current.body.textContent = msg.text;
       finish();
       break;
@@ -143,7 +149,18 @@ function handle(msg) {
   }
 }
 
+// Tokens arrive many times per frame; paint them at most once per frame
+function flush() {
+  flushQueued = false;
+  if (!pending || !current) return;
+  if (!current.stream) current.body.append((current.stream = document.createTextNode("")));
+  current.stream.appendData(pending);
+  pending = "";
+  scrollDown();
+}
+
 function finish() {
+  pending = "";
   current?.classList.remove("streaming");
   current = null;
   setAvatar("idle");
