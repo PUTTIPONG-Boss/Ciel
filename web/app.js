@@ -17,7 +17,7 @@ const STATES = {
 let ws = null;
 let busy = false;
 let current = null; // the Ciel entry currently streaming
-let pending = ""; // streamed text not yet painted
+let pending = []; // streamed text not yet painted, see flush()
 let flushQueued = false;
 let retry = 0;
 let connectedBefore = false;
@@ -25,6 +25,10 @@ let userName = "มาสเตอร์";
 let running = null; // {version, commit} the page was loaded with
 let ttsAvailable = false;
 let turnSpeaks = false; // is the current reply being voiced?
+let subs = new Map(); // anime style: seq → translation of that Japanese line
+let jpLines = new Map(); // seq → Japanese line
+let playingSeq = -1;
+let anime = false; // persona speaking style: Japanese voice + translated text
 
 const prefs = loadPrefs();
 const avatar = await createAvatar($("#stage"));
@@ -32,10 +36,14 @@ const voice = new VoicePlayer({
   onLevel: (level, low, high) => avatar.setLevel(level, low, high),
   onSegment: (seg) => {
     setAvatar("speaking");
+    playingSeq = seg.seq;
     if (seg.emotion) avatar.setEmotion(seg.emotion);
-    if (seg.text) showSubtitle(seg.text);
+    // anime style: Japanese voice, translated subtitle (may arrive a moment later)
+    if (anime) showSubtitle(subs.get(seg.seq) || "…", seg.text);
+    else if (seg.text) showSubtitle(seg.text);
   },
   onIdle: () => {
+    playingSeq = -1;
     if (!busy) setAvatar("idle");
     avatar.setEmotion("calm");
     fadeSubtitle();
@@ -143,8 +151,9 @@ $("#subs-btn").addEventListener("click", () => {
   renderToggles();
 });
 
-function showSubtitle(text) {
-  subtitle.textContent = text;
+function showSubtitle(text, jp = "") {
+  $("#sub-main").textContent = text;
+  $("#sub-jp").textContent = jp;
   subtitle.classList.add("on");
 }
 
@@ -221,10 +230,15 @@ function handle(msg) {
       userName = msg.user_name || userName;
       $("#ps1").textContent = userName;
       ttsAvailable = !!msg.tts;
+      anime = msg.style === "anime";
       renderToggles();
       if (checkVersion(msg)) return;
       if (connectedBefore && log.children.length) {
         addEntry("note", "เชื่อมต่อใหม่แล้ว — บทสนทนาก่อนหน้าจะไม่ถูกจำ");
+      } else if (anime && msg.greeting_ja) {
+        const entry = addEntry("ciel");
+        appendLine(entry, "jp", msg.greeting_ja);
+        appendLine(entry, "sub", msg.greeting);
       } else if (msg.greeting) {
         addEntry("ciel", msg.greeting);
       }
@@ -233,6 +247,9 @@ function handle(msg) {
 
     case "start":
       turnSpeaks = !!msg.speak;
+      anime = msg.style === "anime";
+      subs = new Map();
+      jpLines = new Map();
       if (turnSpeaks) voice.beginTurn();
       current = addEntry("ciel");
       current.classList.add("streaming");
@@ -243,8 +260,16 @@ function handle(msg) {
     case "delta":
       if (!current) current = addEntry("ciel");
       // voiced replies switch to "speaking" when the audio actually starts
-      if (!turnSpeaks && !pending && !current.body.textContent) setAvatar("speaking");
-      pending += msg.text;
+      if (!turnSpeaks && !pending.length && !current.body.textContent) setAvatar("speaking");
+      pending.push([msg.kind || null, msg.text]);
+      if (!flushQueued) {
+        flushQueued = true;
+        requestAnimationFrame(flush);
+      }
+      break;
+
+    case "line_end":
+      pending.push(["end", ""]);
       if (!flushQueued) {
         flushQueued = true;
         requestAnimationFrame(flush);
@@ -252,11 +277,18 @@ function handle(msg) {
       break;
 
     case "segment":
+      jpLines.set(msg.seq, msg.text);
       if (msg.audio) voice.addSegment(msg);
       else {
         avatar.setEmotion(msg.emotion);
-        if (prefs.voiceMode) showSubtitle(msg.text);
+        if (prefs.voiceMode && !anime) showSubtitle(msg.text);
       }
+      break;
+
+    case "sub":
+      subs.set(msg.seq, msg.text);
+      // voiced: update the line being spoken; text-only: show the latest pair
+      if (msg.seq === playingSeq || (!turnSpeaks && prefs.voiceMode)) showSubtitle(msg.text, jpLines.get(msg.seq) || "");
       break;
 
     case "audio_error":
@@ -269,7 +301,7 @@ function handle(msg) {
 
     case "end":
       flush();
-      if (current) current.body.textContent = msg.text;
+      if (current && !msg.structured) current.body.textContent = msg.text;
       finish();
       break;
 
@@ -282,18 +314,39 @@ function handle(msg) {
   }
 }
 
-// Tokens arrive many times per frame; paint them at most once per frame
+// Tokens arrive many times per frame; paint them at most once per frame.
+// pending = [[kind, text], …]; kind null = plain text, "jp"/"sub" = anime lines, "end" = close line
 function flush() {
   flushQueued = false;
-  if (!pending || !current) return;
-  if (!current.stream) current.body.append((current.stream = document.createTextNode("")));
-  current.stream.appendData(pending);
-  pending = "";
+  if (!pending.length || !current) return;
+  for (const [kind, text] of pending) {
+    if (kind === "end") current.line = null;
+    else if (kind) appendLine(current, kind, text, true);
+    else {
+      if (!current.stream) current.body.append((current.stream = document.createTextNode("")));
+      current.stream.appendData(text);
+    }
+  }
+  pending = [];
   scrollDown();
 }
 
+// anime style: the entry body holds alternating Japanese / translation lines
+function appendLine(entry, kind, text, streaming = false) {
+  let line = streaming ? entry.line : null;
+  if (!line || line.dataset.kind !== kind) {
+    line = document.createElement("span");
+    line.className = `ln ${kind}`;
+    line.dataset.kind = kind;
+    line.append(document.createTextNode(""));
+    entry.body.append(line);
+    if (streaming) entry.line = line;
+  }
+  line.firstChild.appendData(text);
+}
+
 function finish() {
-  pending = "";
+  pending = [];
   current?.classList.remove("streaming");
   current = null;
   // a voiced reply stays "thinking" until its audio starts, then the player takes over

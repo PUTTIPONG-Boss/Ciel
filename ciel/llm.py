@@ -101,10 +101,21 @@ class MockLLM:
         ("อังกฤษ", "english"): "[calm]Understood, master. I am running in test mode right now. [tease]Did you forget lunch again?",
     }
 
+    ANIME = [
+        "[calm]了解しました、マスター。今はテストモードで動いています。\n>> รับทราบค่ะ มาสเตอร์ ตอนนี้ฉันทำงานในโหมดทดสอบอยู่นะคะ\n"
+        "[concern]まだ本物の頭脳には繋がっていません。\n>> ยังไม่ได้เชื่อมต่อกับสมองจริงค่ะ",
+        "[shy]べ、別に大したことじゃありませんよ。\n>> เ-เรื่องแค่นี้ไม่ใช่เรื่องใหญ่หรอกค่ะ\n"
+        "[tease]マスター、またお昼ご飯を忘れましたか？\n>> มาสเตอร์ ลืมกินข้าวเที่ยงอีกแล้วเหรอคะ?",
+    ]
+    ANIME_EN = "[calm]了解しました、マスター。\n>> Understood, master.\n[tease]今日も一緒に頑張りましょうね。\n>> Let's do our best together today."
+
     async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
         last = messages[-1]["content"].lower() if messages else ""
-        text = next((r for keys, r in self.BY_LANGUAGE.items() if any(k in last for k in keys)), None)
-        text = text or random.choice(self.REPLIES)
+        if messages and ">> " in messages[0]["content"]:  # persona uses the anime layout
+            text = self.ANIME_EN if any(c.isascii() and c.isalpha() for c in last) and not any("฀" <= c <= "๿" for c in last) else random.choice(self.ANIME)
+        else:
+            text = next((r for keys, r in self.BY_LANGUAGE.items() if any(k in last for k in keys)), None)
+            text = text or random.choice(self.REPLIES)
         await asyncio.sleep(0.4)
         for i in range(0, len(text), 3):
             yield text[i:i + 3]

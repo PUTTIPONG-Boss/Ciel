@@ -25,22 +25,29 @@ class Persona:
     examples: list[dict] = field(default_factory=list)
     emotions: dict = field(default_factory=dict)  # tag → when to use it
     voice: dict = field(default_factory=dict)  # raw voice: section, see tts.py
+    style: str = "native"  # "anime" = always speak Japanese, show a translation
+    greeting_ja: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "Persona":
         user_name = data.get("user_name", "มาสเตอร์")
         fill = lambda s: str(s).replace("{user_name}", user_name).replace("{name}", data.get("name", "Ciel"))
+        examples = lambda key: [{"user": fill(e["user"]), "ciel": fill(e["ciel"])} for e in data.get(key) or []]
+        speaking = data.get("speaking") or {}
+        style = speaking.get("style", "native")
         return cls(
             name=data.get("name", "Ciel"),
             user_name=user_name,
             greeting=fill(data.get("greeting", "")),
+            greeting_ja=fill(data.get("greeting_ja", "")),
             identity=fill(data.get("identity", "")),
             personality=[fill(p) for p in data.get("personality", [])],
             speech={k: (fill(v) if isinstance(v, str) else [fill(x) for x in v]) for k, v in (data.get("speech") or {}).items()},
-            rules=[fill(r) for r in data.get("rules", [])],
-            examples=[{"user": fill(e["user"]), "ciel": fill(e["ciel"])} for e in data.get("examples", [])],
+            rules=[fill(r) for r in data.get("rules", []) + (speaking.get(f"{style}_rules") or [])],
+            examples=examples("examples" if style == "anime" else "native_examples") or examples("examples"),
             emotions={k: fill(v) for k, v in (data.get("emotions") or {}).items()},
             voice=data.get("voice") or {},
+            style=style,
         )
 
     def system_prompt(self, now: datetime | None = None) -> str:
@@ -67,6 +74,21 @@ class Persona:
                 "- แท็กจะถูกซ่อนจากหน้าจอ ใช้ได้เฉพาะแท็กเหล่านี้เท่านั้น:",
             ]
             lines += [f"  - [{tag}] {desc}" for tag, desc in self.emotions.items()]
+        if self.style == "anime":
+            # the server parses this exact layout (speech.AnimeStream) — keep in sync
+            lines += [
+                "",
+                "# รูปแบบคำตอบ (สำคัญที่สุด ต้องทำตามทุกครั้ง)",
+                f"- เสียงของ{self.name}เป็นภาษาญี่ปุ่นเสมอ ไม่ว่า{self.user_name}จะพิมพ์มาเป็นภาษาอะไร",
+                "- ตอบเป็นคู่บรรทัด ทีละประโยค:",
+                "  1) บรรทัดภาษาญี่ปุ่น 1 ประโยค ขึ้นต้นด้วยแท็กอารมณ์",
+                '  2) บรรทัดถัดไปขึ้นต้นด้วย ">> " ตามด้วยคำแปลของประโยคนั้น',
+                f"- คำแปลใช้ภาษาเดียวกับที่{self.user_name}พิมพ์มา (ภาษาไทยเป็นค่าเริ่มต้น ถ้าพิมพ์อังกฤษให้แปลเป็นอังกฤษ)",
+                "- คำแปลภาษาไทยต้องคงบุคลิก คำแทนตัว และคำลงท้ายตาม # วิธีพูด",
+                "- ห้ามเขียนข้อความอื่นนอกจากคู่บรรทัดเหล่านี้ ตัวอย่าง:",
+                "[calm]了解しました、マスター。",
+                f">> รับทราบค่ะ {self.user_name}",
+            ]
         lines += [
             "",
             "# ข้อมูลตอนนี้",

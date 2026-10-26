@@ -128,6 +128,117 @@ class SpeechStream:
                 out.append(Segment(chunk, lang, self.sentence_emotion))
         return out
 
+    # uniform event API shared with AnimeStream (see main.reply_to)
+    def events(self, chunk: str) -> list[tuple]:
+        return self._as_events(*self.feed(chunk))
+
+    def end_events(self) -> list[tuple]:
+        return self._as_events(*self.flush())
+
+    @staticmethod
+    def _as_events(shown: str, segments: list[Segment]) -> list[tuple]:
+        return ([("delta", None, shown)] if shown else []) + [("segment", s) for s in segments]
+
+
+SUB_PREFIXES = (">>", "＞＞", "»")
+
+
+def has_japanese(text: str) -> bool:
+    return any(0x3040 <= ord(c) <= 0x30FF or 0x4E00 <= ord(c) <= 0x9FFF for c in text)
+
+
+class AnimeStream:
+    """'Anime' style: Ciel always speaks Japanese and the screen shows a
+    translation. The model answers in line pairs:
+
+        [shy]べ、別に大したことじゃありませんよ。
+        >> ไม่ใช่เรื่องใหญ่หรอกค่ะ
+
+    Japanese lines become spoken segments; '>>' lines are subtitles for the
+    segment before them. Events:
+      ("delta", "jp"|"sub", text)  text to append to the current line on screen
+      ("line_end", kind)           that line is finished
+      ("segment", Segment)         a Japanese line to speak
+      ("sub", seq, text)           subtitle for segment number `seq`
+    """
+
+    def __init__(self):
+        self.emotion = "calm"
+        self.seq = -1  # index of the last spoken segment
+        self._reset_line()
+
+    def _reset_line(self):
+        self.line = ""
+        self.kind: str | None = None
+        self.sent = 0  # visible chars of this line already sent
+
+    def events(self, chunk: str) -> list[tuple]:
+        out: list[tuple] = []
+        for ch in chunk:
+            if ch == "\n":
+                out += self._end_line()
+            else:
+                self.line += ch
+                out += self._stream_line()
+        return out
+
+    def end_events(self) -> list[tuple]:
+        return self._end_line()
+
+    def _detect_kind(self, final: bool) -> str | None:
+        s = self.line.lstrip()
+        if not s:
+            return None
+        if s.startswith(SUB_PREFIXES):
+            return "sub"
+        if not final and (len(s) < 2 and s[0] in ">＞»" or s.startswith("[") and "]" not in s and len(s) < MAX_TAG_LEN):
+            return None  # can't tell yet
+        return "jp"
+
+    def _visible(self) -> str:
+        text = self.line.lstrip()
+        if self.kind == "sub":
+            for p in SUB_PREFIXES:
+                if text.startswith(p):
+                    text = text[len(p):]
+                    break
+        return TAG.sub("", text).lstrip()
+
+    def _stream_line(self) -> list[tuple]:
+        if self.kind is None:
+            self.kind = self._detect_kind(final=False)
+            if self.kind is None:
+                return []
+        visible = self._visible()
+        cut = visible.rfind("[")  # hold back a tag that may still be arriving
+        if cut != -1 and "]" not in visible[cut:] and len(visible) - cut < MAX_TAG_LEN:
+            visible = visible[:cut]
+        new, self.sent = visible[self.sent:], max(self.sent, len(visible))
+        return [("delta", self.kind, new)] if new else []
+
+    def _end_line(self) -> list[tuple]:
+        if not self.line.strip():
+            self._reset_line()
+            return []
+        self.kind = self.kind or self._detect_kind(final=True)
+        out: list[tuple] = []
+        visible = self._visible().rstrip()
+        if visible[self.sent:]:
+            out.append(("delta", self.kind, visible[self.sent:]))
+        out.append(("line_end", self.kind))
+        if self.kind == "jp":
+            tags = TAG.findall(self.line)
+            if tags:
+                self.emotion = tags[-1].lower()
+            spoken = clean_for_speech(visible)
+            if has_japanese(spoken):
+                self.seq += 1
+                out.append(("segment", Segment(spoken, "ja", self.emotion)))
+        elif self.kind == "sub" and self.seq >= 0:
+            out.append(("sub", self.seq, visible))
+        self._reset_line()
+        return out
+
 
 def strip_tags(text: str) -> str:
     return re.sub(r" {2,}", " ", TAG.sub("", text)).strip()

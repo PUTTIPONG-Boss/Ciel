@@ -187,6 +187,9 @@ body::after {
   transition: opacity 0.4s;
 }
 .subtitle.on { opacity: 1; }
+.sub-jp { display: block; font-size: 13px; color: var(--gold); opacity: 0.8; }
+.sub-jp:empty { display: none; }
+.sub-main { display: block; }
 /* magic circle: stacked layers, each drawn once and rotated on the GPU (see avatar.js) */
 .mc {
   position: absolute;
@@ -300,6 +303,12 @@ body::after {
   color: var(--gold);
   animation: blink 1s steps(1) infinite;
 }
+
+/* anime style: Japanese line (spoken) above its translation (read) */
+.entry .ln { display: block; }
+.entry .ln.jp { font-size: 13px; color: var(--gold); opacity: 0.75; }
+.entry .ln.sub { margin-bottom: 6px; }
+.entry .ln.sub:last-child { margin-bottom: 0; }
 
 .entry.user .who { color: var(--aether); }
 .entry.user .text { color: #a9d9cd; }

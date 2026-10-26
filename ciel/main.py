@@ -12,7 +12,7 @@ from . import auth, tts, updater
 from .config import WEB_DIR, settings
 from .llm import LLMError, create_llm
 from .persona import PersonaStore
-from .speech import SpeechStream, strip_tags
+from .speech import AnimeStream, SpeechStream, strip_tags
 from .version import info as version_info
 from .voice_api import create_router
 
@@ -85,6 +85,8 @@ def hello(persona) -> dict:
         "name": persona.name,
         "user_name": persona.user_name,
         "greeting": strip_tags(persona.greeting),
+        "greeting_ja": persona.greeting_ja if persona.style == "anime" else "",
+        "style": persona.style,
         "model": settings.model if settings.llm != "mock" else "mock",
         "tts": tts.enabled(),
         **version_info(),
@@ -161,8 +163,12 @@ class Channel:
 async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool) -> str:
     """Streams one reply. Text goes out as `delta`s; each finished sentence goes
     out as a `segment` (language + emotion, drives the circle) and, when
-    speaking, as a binary frame: 4-byte big-endian seq + MP3 bytes, in order."""
-    stream = SpeechStream()
+    speaking, as a binary frame: 4-byte big-endian seq + MP3 bytes, in order.
+
+    In anime style deltas carry kind "jp" | "sub", lines close with `line_end`,
+    and each Japanese segment's translation follows as `sub` (same seq)."""
+    anime = persona.style == "anime"
+    stream = AnimeStream() if anime else SpeechStream()
     voice_cfg = tts.load_config(persona.voice) if speak else None
     audio_jobs: asyncio.Queue = asyncio.Queue()
     limit = asyncio.Semaphore(2)  # don't hammer the TTS service
@@ -182,26 +188,48 @@ async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool)
                 await channel.send_json({"type": "audio_error", "seq": n})
         await channel.send_json({"type": "audio_end"})
 
-    async def emit(shown: str, segments) -> None:
+    async def emit(events: list[tuple]) -> None:
         nonlocal seq
-        if shown:
-            await channel.send_json({"type": "delta", "text": shown})
-        for seg in segments:
-            gain = tts.gain(tts.prosody(voice_cfg, seg.lang, seg.emotion)["volume"]) if speak else 1
-            await channel.send_json({"type": "segment", "seq": seq, "lang": seg.lang, "emotion": seg.emotion, "text": seg.text, "audio": speak, "gain": gain})
-            if speak:
-                await audio_jobs.put((seq, asyncio.create_task(synth(seg))))
-            seq += 1
+        pending = None  # merge consecutive deltas of the same kind into one message
+        for ev in events + [("flush",)]:
+            if ev[0] == "delta":
+                if pending and pending["kind"] == ev[1]:
+                    pending["text"] += ev[2]
+                    continue
+                if pending:
+                    await send_delta(pending)
+                pending = {"kind": ev[1], "text": ev[2]}
+                continue
+            if pending:
+                await send_delta(pending)
+                pending = None
+            if ev[0] == "segment":
+                seg = ev[1]
+                gain = tts.gain(tts.prosody(voice_cfg, seg.lang, seg.emotion)["volume"]) if speak else 1
+                await channel.send_json({"type": "segment", "seq": seq, "lang": seg.lang, "emotion": seg.emotion, "text": seg.text, "audio": speak, "gain": gain})
+                if speak:
+                    await audio_jobs.put((seq, asyncio.create_task(synth(seg))))
+                seq += 1
+            elif ev[0] == "sub":
+                await channel.send_json({"type": "sub", "seq": ev[1], "text": ev[2]})
+            elif ev[0] == "line_end":
+                await channel.send_json({"type": "line_end", "kind": ev[1]})
+
+    async def send_delta(d: dict) -> None:
+        msg = {"type": "delta", "text": d["text"]}
+        if d["kind"]:
+            msg["kind"] = d["kind"]
+        await channel.send_json(msg)
 
     sender = asyncio.create_task(send_audio_in_order()) if speak else None
-    await channel.send_json({"type": "start", "speak": speak})
+    await channel.send_json({"type": "start", "speak": speak, "style": persona.style})
     raw = ""
     try:
         async for delta in llm.stream(messages):
             raw += delta
-            await emit(*stream.feed(delta))
-        await emit(*stream.flush())
-        await channel.send_json({"type": "end", "text": strip_tags(raw)})
+            await emit(stream.events(delta))
+        await emit(stream.end_events())
+        await channel.send_json({"type": "end", "text": strip_tags(raw), "structured": anime})
     finally:
         if sender:
             await audio_jobs.put(None)
