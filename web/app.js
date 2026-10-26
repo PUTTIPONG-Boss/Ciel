@@ -5,35 +5,71 @@ const log = $("#log");
 const input = $("#input");
 const sendBtn = $("#send-btn");
 
+const STATES = {
+  idle: ["ΗΡΕΜΙΑ", "พร้อมรับคำสั่ง"],
+  thinking: ["ΥΠΟΛΟΓΙΣΜΟΣ", "กำลังประมวลผล"],
+  speaking: ["ΛΟΓΟΣ", "กำลังตอบ"],
+};
+
 let ws = null;
 let busy = false;
-let bubble = null; // the Ciel message currently streaming
+let current = null; // the Ciel entry currently streaming
 let retry = 0;
 let connectedBefore = false;
+let userName = "มาสเตอร์";
+let running = null; // {version, commit} the page was loaded with
 const avatar = await createAvatar($("#stage"));
 
 // ── status ────────────────────────────────────────────
 
 function setStatus(kind, text) {
-  $("#status-dot").className = `status-dot ${kind}`;
+  $("#status-dot").className = `dot ${kind}`;
   $("#status-text").textContent = text;
 }
 
 function setBusy(v) {
   busy = v;
   sendBtn.disabled = v;
-  setStatus(v ? "busy" : "online", v ? "กำลังประมวลผล…" : "ออนไลน์");
+  setStatus(v ? "busy" : "online", v ? "ΥΠΟΛΟΓΙΣΜΟΣ" : "ΣΥΝΔΕΔΕΜΕΝΟ");
 }
 
-// ── messages ──────────────────────────────────────────
+function setAvatar(state) {
+  avatar.setState(state);
+  const [greek, thai] = STATES[state];
+  $("#state-greek").textContent = greek;
+  $("#state-thai").textContent = thai;
+}
 
-function addMessage(role, text = "") {
-  const el = document.createElement("div");
-  el.className = `msg ${role}`;
-  el.textContent = text;
-  log.append(el);
+function showVersion(v) {
+  $("#sl-version").textContent = `v${v.version}${v.commit ? ` · ${v.commit}` : ""}`;
+}
+
+// ── log ───────────────────────────────────────────────
+
+const clock = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
+
+function addEntry(role, text = "") {
+  const entry = document.createElement("div");
+  entry.className = `entry ${role}`;
+  if (role === "ciel" || role === "user") {
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = role === "ciel" ? "◈ CIEL" : `› ${userName}`;
+    const time = document.createElement("span");
+    time.textContent = `[${clock()}]`;
+    meta.append(time, who);
+    entry.append(meta);
+  }
+  const body = document.createElement("div");
+  body.className = "text";
+  body.textContent = text;
+  entry.append(body);
+  entry.body = body;
+  log.append(entry);
   scrollDown();
-  return el;
+  return entry;
 }
 
 function scrollDown() {
@@ -55,9 +91,9 @@ function connect() {
 
   ws.onclose = (e) => {
     if (e.code === 4401) return showLogin();
-    setStatus("offline", "ขาดการเชื่อมต่อ กำลังลองใหม่…");
-    avatar.setState("idle");
-    if (bubble) finishBubble();
+    setStatus("offline", "ΑΠΟΣΥΝΔΕΣΗ");
+    setAvatar("idle");
+    if (current) finish();
     busy = false;
     setTimeout(connect, Math.min(1000 * 2 ** retry++, 15000));
   };
@@ -66,46 +102,75 @@ function connect() {
 function handle(msg) {
   switch (msg.type) {
     case "hello":
-      $("#brand-name").textContent = msg.name;
+      $("#brand-name").textContent = msg.name.toUpperCase();
       document.title = msg.name;
+      $("#sl-model").textContent = msg.model ?? "—";
+      userName = msg.user_name || userName;
+      $("#ps1").textContent = `${userName} ›`;
+      if (checkVersion(msg)) return;
       if (connectedBefore && log.children.length) {
-        addMessage("note", "เชื่อมต่อใหม่แล้ว — บทสนทนาก่อนหน้าจะไม่ถูกจำ");
+        addEntry("note", "เชื่อมต่อใหม่แล้ว — บทสนทนาก่อนหน้าจะไม่ถูกจำ");
       } else if (msg.greeting) {
-        addMessage("ciel", msg.greeting);
+        addEntry("ciel", msg.greeting);
       }
       connectedBefore = true;
       break;
 
     case "start":
-      bubble = addMessage("ciel typing");
-      avatar.setState("thinking");
+      current = addEntry("ciel");
+      current.classList.add("streaming");
+      setAvatar("thinking");
       break;
 
     case "delta":
-      if (!bubble) bubble = addMessage("ciel");
-      if (!bubble.textContent) avatar.setState("speaking");
-      bubble.textContent += msg.text;
+      if (!current) current = addEntry("ciel");
+      if (!current.body.textContent) setAvatar("speaking");
+      current.body.textContent += msg.text;
       scrollDown();
       break;
 
     case "end":
-      if (bubble) bubble.textContent = msg.text;
-      finishBubble();
+      if (current) current.body.textContent = msg.text;
+      finish();
       break;
 
     case "error":
-      if (bubble && !bubble.textContent) bubble.remove();
-      finishBubble();
-      addMessage("error", msg.message);
+      if (current && !current.body.textContent) current.remove();
+      finish();
+      addEntry("error", msg.message);
       break;
   }
 }
 
-function finishBubble() {
-  bubble?.classList.remove("typing");
-  bubble = null;
-  avatar.setState("idle");
+function finish() {
+  current?.classList.remove("streaming");
+  current = null;
+  setAvatar("idle");
   setBusy(false);
+}
+
+// ── updates: reload when the server is running a newer build ──
+
+function checkVersion(v) {
+  if (!running) {
+    running = { version: v.version, commit: v.commit };
+    showVersion(running);
+    return false;
+  }
+  if (v.version === running.version && v.commit === running.commit) return false;
+  if (busy) return false; // try again after this reply
+  addEntry("note", `ตรวจพบเวอร์ชันใหม่ v${v.version} · ${v.commit} — กำลังโหลดใหม่…`);
+  setTimeout(() => location.reload(), 1500);
+  return true;
+}
+
+async function pollVersion() {
+  try {
+    const v = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
+    checkVersion(v);
+  } catch {
+    /* server restarting — the socket will reconnect */
+  }
 }
 
 // ── input ─────────────────────────────────────────────
@@ -113,7 +178,7 @@ function finishBubble() {
 function send() {
   const text = input.value.trim();
   if (!text || busy || ws?.readyState !== WebSocket.OPEN) return;
-  addMessage("user", text);
+  addEntry("user", text);
   ws.send(JSON.stringify({ type: "chat", text }));
   input.value = "";
   autosize();
@@ -122,7 +187,8 @@ function send() {
 
 function autosize() {
   input.style.height = "auto";
-  input.style.height = `${input.scrollHeight + 2}px`;
+  input.style.height = `${input.scrollHeight + 1}px`; // +1 for the bottom border
+  input.style.overflowY = input.scrollHeight > 160 ? "auto" : "hidden";
 }
 
 $("#composer").addEventListener("submit", (e) => {
@@ -149,7 +215,7 @@ $("#reset-btn").addEventListener("click", () => {
 // ── login ─────────────────────────────────────────────
 
 function showLogin() {
-  setStatus("offline", "ต้องเข้าสู่ระบบ");
+  setStatus("offline", "ΤΑΥΤΟΤΗΤΑ");
   $("#login").hidden = false;
   $("#password").focus();
 }
@@ -176,10 +242,16 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
+const tick = () => ($("#sl-clock").textContent = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+tick();
+setInterval(tick, 15000);
+setInterval(pollVersion, 30000);
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && pollVersion());
+
 try {
   const me = await fetch("/api/me").then((r) => r.json());
   if (me.authed) connect();
   else showLogin();
 } catch {
-  setStatus("offline", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+  setStatus("offline", "ΑΠΟΣΥΝΔΕΣΗ");
 }

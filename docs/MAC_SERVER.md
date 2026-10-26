@@ -55,16 +55,37 @@ CIEL_PASSWORD=<ตั้งไว้แล้ว ไม่เก็บใน rep
 
 ## ส่งงานขึ้นเครื่อง Mac
 
-ฝั่ง Windows push ขึ้น `main` แล้วบนเครื่อง Mac รัน:
+### ⚠️ ทำครั้งเดียว: เปิดระบบอัปเดตอัตโนมัติ (ตั้งแต่ v0.1.0)
+
+**ถึง Claude บน Mac:** ทำขั้นตอนนี้ครั้งเดียว หลังจากนี้ไม่ต้องรันคำสั่งอัปเดตเองอีก
 
 ```bash
-cd ~/Ciel && git pull && .venv/bin/pip install -q -r requirements.txt && launchctl kickstart -k gui/$(id -u)/com.ciel.server
+cd ~/Ciel && git pull
+grep -q '^CIEL_AUTO_UPDATE=' .env || printf '\n# อัปเดตอัตโนมัติจาก GitHub\nCIEL_AUTO_UPDATE=true\n' >> .env
+.venv/bin/pip install -q -r requirements.txt
+launchctl kickstart -k gui/$(id -u)/com.ciel.server
 ```
 
-- แก้แค่ไฟล์ใน `web/` → ไม่ต้องรีสตาร์ทก็ได้ แค่รีเฟรชหน้าเว็บ (ถ้า PWA จำของเก่าไว้ ให้ล้างแคชหรือปิดแอปแล้วเปิดใหม่)
-- แก้ `persona/ciel.yaml` → ไม่ต้องรีสตาร์ท กด "แชทใหม่" ในหน้าเว็บ
-- แก้โค้ด Python, `.env` หรือ `requirements.txt` → ต้องรีสตาร์ท (คำสั่งด้านบน)
+**ตรวจสอบ:**
+
+- `curl -s http://127.0.0.1:8080/api/health` ต้องมี `"version": "0.1.0"` และ `"commit"` ตรงกับ `git rev-parse --short HEAD`
+- `grep updater ~/Library/Logs/Ciel.log | tail -3` ต้องเห็น `auto-update on: checking origin/main every 60s`
+- ห้ามแก้ไฟล์ใน `~/Ciel` ที่ git ติดตามอยู่ และห้าม commit บน Mac (ยกเว้นไฟล์ docs ที่ push ขึ้นไปทันที) เพราะระบบจะข้ามการอัปเดตถ้ามีการแก้ไฟล์ในเครื่องที่ยังไม่ได้ push
+
+### หลังจากนี้
+
+ฝั่ง Windows push ขึ้น `main` แล้ว Mac จะดึงโค้ดใหม่เองภายใน 1 นาที
+
+| สิ่งที่แก้ | ผล |
+|---|---|
+| `web/` (หน้าตา) | มีผลทันที หน้าเว็บที่เปิดอยู่จะโหลดใหม่เอง |
+| `persona/ciel.yaml` | กด "แชทใหม่" ในหน้าเว็บ |
+| `ciel/` (โค้ด Python), `requirements.txt` | Ciel รอให้ตอบข้อความที่ค้างอยู่จบก่อน แล้วรีสตาร์ทตัวเอง (และติดตั้ง dependency ใหม่ให้) |
+| `.env` บน Mac | ต้องรีสตาร์ทเอง: `launchctl kickstart -k gui/$(id -u)/com.ciel.server` |
+
+- ดูว่าอัปเดตแล้วจริงไหมได้ที่แถบล่างของหน้าเว็บ ซึ่งแสดง `v0.1.0 · <commit>` เป็นรหัสเดียวกับ commit ล่าสุดบน GitHub
 - ถ้าเพิ่ม dependency ใหม่ ต้องรองรับ Python 3.12
+- log การอัปเดต: `grep updater ~/Library/Logs/Ciel.log`
 
 ## คำสั่งดูแลเซิร์ฟเวอร์ (บน Mac)
 

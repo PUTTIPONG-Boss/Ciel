@@ -10,9 +10,9 @@ from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / "web" / "icons"
 
-BG = (10, 14, 26)
-STOPS = [(0.0, (255, 255, 255)), (0.22, (94, 231, 255)), (0.6, (59, 108, 255)), (1.0, (167, 139, 250))]
-RING = (94, 231, 255)
+BG = (5, 8, 7)
+STOPS = [(0.0, (255, 251, 234)), (0.3, (255, 224, 138)), (0.65, (255, 154, 46)), (1.0, (122, 58, 6))]
+RING = (233, 185, 73)
 
 
 def lerp(a, b, t):
@@ -33,7 +33,7 @@ def pixel(x, y, size):
     color = BG
     d = math.hypot(u - 32, v - 32)
     if abs(d - 25) < 0.9:  # ring
-        color = lerp(BG, RING, 0.45)
+        color = lerp(BG, RING, 0.85)
     if d <= 18:  # orb
         g = math.hypot(u - (32 - 18 + 0.38 * 36), v - (32 - 18 + 0.32 * 36)) / (0.75 * 36)
         color = gradient(g)

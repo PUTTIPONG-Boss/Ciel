@@ -68,6 +68,11 @@ ollama pull qwen3:8b
 - พับจอ: ใช้แอป **Amphetamine** (โหมด Closed-Display)
 - ถนอมแบต: ใช้ **AlDente** จำกัดการชาร์จที่ 80%
 
+## เวอร์ชันและการอัปเดต
+
+- เวอร์ชันอยู่ในไฟล์ [`VERSION`](VERSION) และแสดงที่แถบล่างของหน้าเว็บเป็น `v0.1.0 · <commit>` ดูประวัติได้ที่ [CHANGELOG.md](CHANGELOG.md)
+- บนเครื่องเซิร์ฟเวอร์ ตั้ง `CIEL_AUTO_UPDATE=true` แล้ว push ขึ้น GitHub ได้เลย เซิร์ฟเวอร์จะดึงโค้ดใหม่และโหลดใหม่เอง (รายละเอียดใน [docs/MAC_SERVER.md](docs/MAC_SERVER.md))
+
 ## โครงสร้างโปรเจกต์
 
 ```
@@ -75,17 +80,19 @@ ciel/            backend (FastAPI)
   main.py        API + WebSocket แชท
   persona.py     แปลง persona/*.yaml เป็น system prompt
   llm.py         เชื่อม Ollama (หรือ mock) — เปลี่ยนสมองได้โดยไม่กระทบส่วนอื่น
+  updater.py     อัปเดตอัตโนมัติจาก GitHub
+  version.py     เวอร์ชัน + commit ที่กำลังรัน
   auth.py        รหัสผ่านหน้าเว็บ
   config.py      อ่านค่าจาก .env
 persona/         ไฟล์นิสัยของ Ciel
 web/             หน้า UI (PWA ติดตั้งเป็นแอปได้)
-  avatar.js      ร่างของ Ciel (ตอนนี้เป็นวงแสง → Live2D ในอนาคต)
+  avatar.js      ร่างของ Ciel (ตอนนี้เป็นวงเวท → Live2D จะยืนอยู่หน้าวงเวทในอนาคต)
   live2d/        ที่วางโมเดล Live2D
 ```
 
 ## Roadmap
 
-- [x] **เฟส 1 — Ciel คุยได้:** หน้า UI, สตรีมคำตอบ, นิสัยจาก YAML, PWA, รหัสผ่าน
+- [x] **เฟส 1 — Ciel คุยได้ (v0.1):** หน้า UI วงเวท, สตรีมคำตอบ, นิสัยจาก YAML, PWA, รหัสผ่าน, อัปเดตอัตโนมัติ
 - [ ] **เฟส 2 — Ciel จำได้:** เก็บประวัติแชท + ความจำระยะยาว (SQLite + vector search)
 - [ ] **เฟส 3 — Ciel พูดได้:** TTS ภาษาไทยทีละประโยค (Edge TTS → F5-TTS-THAI เสียงเฉพาะของ Ciel)
 - [ ] **เฟส 4 — Ciel ฟังได้:** กดค้างพูด (Whisper) → wake word "Ciel"

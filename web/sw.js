@@ -1,6 +1,6 @@
 // Minimal service worker so Ciel can be installed as an app.
 // Network-first for the app shell; never caches /api or /ws.
-const CACHE = "ciel-v1";
+const CACHE = "ciel-v2";
 const SHELL = ["/", "/style.css", "/app.js", "/avatar.js", "/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (e) => {
