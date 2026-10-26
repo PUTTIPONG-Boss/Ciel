@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Ciel</title>
+  <meta name="theme-color" content="#0a0e1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ciel">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="status-dot" id="status-dot" title="กำลังเชื่อมต่อ"></span>
+        <span class="brand-name" id="brand-name">Ciel</span>
+        <span class="status-text" id="status-text">กำลังเชื่อมต่อ…</span>
+      </div>
+      <button class="icon-btn" id="reset-btn" title="แชทใหม่" aria-label="แชทใหม่">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </header>
+
+    <section class="stage" id="stage" aria-hidden="true">
+      <!-- Live2D model will render here later; until then Ciel is an orb -->
+      <div class="orb" id="orb" data-state="idle">
+        <div class="orb-ring"></div>
+        <div class="orb-core"></div>
+        <div class="orb-glow"></div>
+      </div>
+    </section>
+
+    <main class="chat" id="chat">
+      <div class="log" id="log" aria-live="polite"></div>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <button type="button" class="icon-btn mic" id="mic-btn" disabled title="เร็วๆ นี้: คุยด้วยเสียง" aria-label="คุยด้วยเสียง (เร็วๆ นี้)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <textarea id="input" rows="1" placeholder="คุยกับ Ciel…" enterkeyhint="send"></textarea>
+        <button type="submit" class="icon-btn send" id="send-btn" aria-label="ส่ง">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+    </main>
+  </div>
+
+  <div class="login" id="login" hidden>
+    <form class="login-card" id="login-form">
+      <div class="orb small" data-state="idle"><div class="orb-ring"></div><div class="orb-core"></div><div class="orb-glow"></div></div>
+      <h1>Ciel</h1>
+      <p>กรุณายืนยันตัวตนค่ะ มาสเตอร์</p>
+      <input type="password" id="password" placeholder="รหัสผ่าน" autocomplete="current-password" required>
+      <button type="submit">เข้าสู่ระบบ</button>
+      <p class="login-error" id="login-error"></p>
+    </form>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

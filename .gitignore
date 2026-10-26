@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+.DS_Store
+
+# Live2D models usually have their own license — keep them out of the repo by default
+web/live2d/models/*
+!web/live2d/models/.gitkeep
