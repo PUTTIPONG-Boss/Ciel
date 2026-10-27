@@ -156,9 +156,9 @@ def main() -> None:
     short_first = sum(is_ack(t) for t in first_lines)
     content = [content_audio(r) for r in ok]
     passed = sum(c is not None and c <= TARGET for c in content)
-    translated = sum(len(r["subs"]) for r in ok)
-    # the opening ack line has no translation by design, so don't count it
-    segs = sum(len(r["segments"]) - (1 if r["segments"] and is_ack(r["segments"][0][1]) else 0) for r in ok)
+    # every spoken line, ack-like or not, should get its own translation
+    translated = sum(sum(1 for seq in r["subs"] if seq >= 0) for r in ok)
+    segs = sum(len(r["segments"]) for r in ok)
 
     lines = [
         f"# เวลาตอบของ Ciel ในแอปจริง — {datetime.now():%Y-%m-%d %H:%M}",
@@ -182,7 +182,7 @@ def main() -> None:
         f"- **ผ่านเป้า ≤ {TARGET:.0f} วินาที: {passed}/{len(ok)} ข้อ**",
         f"- บรรทัดแรกเป็นคำรับคำเปล่าๆ (ไม่ควรมีแล้ว): {short_first}/{len(first_lines)}",
         f"- ความยาวบรรทัดแรก (ตัวอักษร): เฉลี่ย {statistics.mean([len(t) for t in first_lines]) if first_lines else 0:.1f}",
-        f"- ประโยคเนื้อหาที่มีคำแปล: {translated}/{segs} · เสียงสร้างไม่สำเร็จ: {sum(r['audio_errors'] for r in ok)}",
+        f"- ประโยคที่มีคำแปล: {translated}/{segs} · เสียงสร้างไม่สำเร็จ: {sum(r['audio_errors'] for r in ok)}",
         "",
         "## รายข้อ",
         "",

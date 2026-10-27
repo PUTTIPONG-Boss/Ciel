@@ -19,7 +19,7 @@ class LLMError(Exception):
 
 
 class LLM(Protocol):
-    def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]: ...
+    def stream(self, messages: list[dict], model: str | None = None, num_predict: int | None = None) -> AsyncIterator[str]: ...
 
 
 class ThinkFilter:
@@ -114,23 +114,27 @@ class OllamaLLM:
         exactly like a real request, or the first message starts cold.
 
         `probe` (the same prompt + one short user message) then runs the small
-        "read a few tokens after the cache, write a few" request once: the first
+        "read a few tokens after the cache, write a few" request: the first
         such request after a start is ~4x slower on the M1's GPU (2.2 s instead
-        of 0.65 s, docs/model-compare/2026-10-27-1907-latency.md)."""
+        of 0.65 s, docs/model-compare/2026-10-27-1907-latency.md). One
+        non-streamed 4-token probe wasn't enough (2141-latency.md), so it now
+        goes through stream() exactly like a reply, twice."""
         try:
             r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
             if r.status_code != 200 and "think" in r.text and not self.raw:
                 self.no_think_param.add(self.s.model)
                 r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
             if probe and r.status_code == 200:
-                r = await self.client.post(self._endpoint, json=self._payload(probe, self.s.model, False, 4))
+                for _ in range(2):
+                    async for _ in self.stream(probe, num_predict=16):
+                        pass
             log.info("warm-up done (%s, %s, HTTP %s)", self.s.model, "raw" if self.raw else "chat", r.status_code)
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, LLMError) as e:
             log.warning("warm-up failed: %s", e)
 
-    async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:
+    async def stream(self, messages: list[dict], model: str | None = None, num_predict: int | None = None) -> AsyncIterator[str]:
         model = model or self.s.model
-        payload = self._payload(messages, model, True, self.s.num_predict)
+        payload = self._payload(messages, model, True, num_predict or self.s.num_predict)
         think = ThinkFilter()
         try:
             async with self.client.stream("POST", self._endpoint, json=payload) as r:
@@ -139,7 +143,7 @@ class OllamaLLM:
                     # Fine-tunes (e.g. Shisa) may ship a chat template without thinking support
                     if "think" in body and "think" in payload:
                         self.no_think_param.add(model)
-                        async for text in self.stream(messages, model):
+                        async for text in self.stream(messages, model, num_predict):
                             yield text
                         return
                     raise LLMError(f"Ollama ตอบกลับ {r.status_code}: {body[:200]}")
@@ -198,7 +202,7 @@ class MockLLM:
     async def warmup(self, messages: list[dict], probe: list[dict] | None = None) -> None:
         pass
 
-    async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:
+    async def stream(self, messages: list[dict], model: str | None = None, num_predict: int | None = None) -> AsyncIterator[str]:
         last = messages[-1]["content"].lower() if messages else ""
         if messages and ">> " in messages[0]["content"]:  # persona uses the anime layout
             text = self.ANIME_EN if any(c.isascii() and c.isalpha() for c in last) and not any("฀" <= c <= "๿" for c in last) else random.choice(self.ANIME)
