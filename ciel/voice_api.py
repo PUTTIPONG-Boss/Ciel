@@ -15,6 +15,12 @@ SAMPLES = {
 }
 
 
+# Short acknowledgements played the instant a message is sent, while the model
+# is still thinking — so Ciel answers "immediately" (see docs/model-compare/2026-10-27-speed-research.md)
+ACKS = ["ん。", "はい。", "……はい。"]
+_ack_cache: dict[tuple, bytes] = {}
+
+
 def require_auth(request: Request) -> None:
     if not auth.is_authed(request.cookies.get(auth.COOKIE)):
         raise HTTPException(401, "login required")
@@ -74,6 +80,19 @@ def create_router(personas: PersonaStore) -> APIRouter:
             raise HTTPException(502, str(e))
         volume = tts.prosody(cfg, segments[0].lang, segments[0].emotion)["volume"]
         return Response(audio, media_type="audio/mpeg", headers={"X-Ciel-Gain": str(tts.gain(volume))})
+
+    @router.get("/ack/{i}")
+    async def ack(i: int):
+        if not 0 <= i < len(ACKS):
+            raise HTTPException(404)
+        p = tts.prosody(tts.load_config(personas.get().voice), "ja", "calm")
+        key = (ACKS[i], p["voice"], p["rate"], p["pitch"])
+        if key not in _ack_cache:
+            try:
+                _ack_cache[key] = await tts.synthesize(ACKS[i], **p)
+            except tts.TTSError as e:
+                raise HTTPException(502, str(e))
+        return Response(_ack_cache[key], media_type="audio/mpeg", headers={"X-Ciel-Gain": str(tts.gain(p["volume"]))})
 
     @router.put("")
     async def save(body: SaveBody):

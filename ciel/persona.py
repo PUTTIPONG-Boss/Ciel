@@ -50,8 +50,7 @@ class Persona:
             style=style,
         )
 
-    def system_prompt(self, now: datetime | None = None) -> str:
-        now = now or datetime.now()
+    def system_prompt(self) -> str:
         s = self.speech
         lines = [f"คุณคือ {self.name}", "", "# ตัวตน", self.identity.strip(), "", "# บุคลิก"]
         lines += [f"- {p}" for p in self.personality]
@@ -92,16 +91,26 @@ class Persona:
         lines += [
             "",
             "# ข้อมูลตอนนี้",
-            f"- วันนี้วัน{THAI_DAYS[now.weekday()]}ที่ {now.day}/{now.month}/{now.year + 543} เวลา {now:%H:%M} น.",
+            f"- ข้อความล่าสุดของ{self.user_name}ขึ้นต้นด้วยวันเวลาปัจจุบันในวงเล็บ ใช้เป็นข้อมูลเท่านั้น ไม่ต้องพูดถึงถ้าไม่ได้ถูกถาม",
         ]
         return "\n".join(lines)
 
     def build_messages(self, history: list[dict], now: datetime | None = None) -> list[dict]:
-        messages = [{"role": "system", "content": self.system_prompt(now)}]
+        """System prompt + examples + history. Everything before the last user
+        message stays byte-identical between turns, so Ollama's prompt cache can
+        skip re-reading it (~3,000 tokens, ~10 s on an M1). That's why the clock
+        is stamped onto the last user message here, not into the system prompt,
+        and never stored in `history`."""
+        messages = [{"role": "system", "content": self.system_prompt()}]
         for ex in self.examples:
             messages.append({"role": "user", "content": ex["user"]})
             messages.append({"role": "assistant", "content": ex["ciel"]})
-        return messages + history
+        messages += history
+        if history and history[-1]["role"] == "user":
+            now = now or datetime.now()
+            stamp = f"({'วัน' + THAI_DAYS[now.weekday()]}ที่ {now.day}/{now.month}/{now.year + 543} เวลา {now:%H:%M} น.)"
+            messages[-1] = {"role": "user", "content": f"{stamp}\n{history[-1]['content']}"}
+        return messages
 
 
 class PersonaStore:

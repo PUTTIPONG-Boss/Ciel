@@ -194,12 +194,13 @@ class AnimeStream:
             return "sub"
         if not final and (len(s) < 2 and s[0] in ">＞»" or s.startswith("[") and "]" not in s and len(s) < MAX_TAG_LEN):
             return None  # can't tell yet
+        # Translations never carry an emotion tag, so a tagged line is Japanese —
+        # even "[calm]RAMは…", which starts with Latin letters.
+        if TAG.match(s):
+            return "jp"
         # The model sometimes forgets ">>". Decide by the first real character:
         # Japanese → a line to speak, anything else (Thai, English) → translation.
-        body = TAG.sub("", s).lstrip()
-        if not body:
-            return "jp" if final else None
-        first = body[0]
+        first = s[0]
         if script(first) == "ja" or first in "「『（(…":
             return "jp"
         return "sub"
@@ -232,6 +233,13 @@ class AnimeStream:
         self.kind = self.kind or self._detect_kind(final=True)
         out: list[tuple] = []
         visible = self._visible().rstrip()
+        # a tagged line with no Japanese at all is really a translation the
+        # model mis-tagged; line_end carries the corrected kind for the screen
+        if self.kind == "jp" and not has_japanese(visible) and any(c.isalpha() for c in visible):
+            if visible[self.sent:]:  # finish the line in the span it was streaming into
+                out.append(("delta", "jp", visible[self.sent:]))
+                self.sent = len(visible)
+            self.kind = "sub"
         if visible[self.sent:]:
             out.append(("delta", self.kind, visible[self.sent:]))
         out.append(("line_end", self.kind))

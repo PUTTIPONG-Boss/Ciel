@@ -13,11 +13,60 @@ export class VoicePlayer {
   }
 
   #reset() {
+    this.#resetTurn();
+    this.source = null;
+  }
+
+  #resetTurn() {
     this.meta = new Map(); // seq → {text, lang, emotion}
     this.buffers = new Map(); // seq → AudioBuffer | null (failed)
     this.next = 0;
-    this.source = null;
     this.ended = false;
+  }
+
+  // ── instant acknowledgement ("ん。" / "はい。") ──────────────
+  // Pre-fetched once; played the moment a message is sent so Ciel reacts
+  // within ~0.1 s while the model is still thinking. The real answer queues
+  // behind it (#pump waits for the current source to end).
+
+  async loadAcks(urls) {
+    this.acks = [];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) this.acks.push({ data: await res.arrayBuffer(), gain: Number(res.headers.get("X-Ciel-Gain") || 1) });
+      } catch {}
+    }
+  }
+
+  async playAck() {
+    if (!this.ctx || !this.acks?.length || this.source) return;
+    const ack = this.acks[Math.floor(Math.random() * this.acks.length)];
+    try {
+      ack.buffer ||= await this.ctx.decodeAudioData(ack.data.slice(0));
+    } catch {
+      return;
+    }
+    if (this.source) return; // the real answer beat us to it
+    const src = this.ctx.createBufferSource();
+    const amp = this.ctx.createGain();
+    amp.gain.value = ack.gain;
+    src.buffer = ack.buffer;
+    src.connect(amp).connect(this.analyser);
+    src.isAck = true;
+    src.onended = () => {
+      if (this.source !== src) return;
+      this.source = null;
+      if (!this.ignore) this.#pump();
+      else {
+        cancelAnimationFrame(this.raf);
+        this.raf = 0;
+        this.onLevel(0, 0, 0);
+      }
+    };
+    this.source = src;
+    src.start();
+    if (!this.raf) this.#meter();
   }
 
   get playing() {
@@ -44,7 +93,8 @@ export class VoicePlayer {
   }
 
   beginTurn() {
-    this.stop();
+    if (this.source?.isAck) this.#resetTurn(); // let the acknowledgement finish
+    else this.stop();
     this.ignore = false;
   }
 

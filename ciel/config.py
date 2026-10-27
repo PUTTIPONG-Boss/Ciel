@@ -33,6 +33,8 @@ class Settings:
     think: bool = _bool(os.getenv("CIEL_THINK", "false"))
     temperature: float = float(os.getenv("CIEL_TEMPERATURE", "0.7"))
     num_ctx: int = int(os.getenv("CIEL_NUM_CTX", "8192"))
+    keep_alive: str = os.getenv("CIEL_KEEP_ALIVE", "-1")  # -1 = keep the model loaded forever
+    num_predict: int = int(os.getenv("CIEL_NUM_PREDICT", "150"))
     max_history: int = int(os.getenv("CIEL_MAX_HISTORY", "20"))
     persona_path: Path = ROOT / os.getenv("CIEL_PERSONA", "persona/ciel.yaml")
     host: str = os.getenv("CIEL_HOST", "127.0.0.1")

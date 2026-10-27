@@ -239,6 +239,7 @@ function handle(msg) {
       ttsAvailable = !!msg.tts;
       anime = msg.style === "anime";
       renderToggles();
+      if (ttsAvailable && anime && !voice.acks) voice.loadAcks([0, 1, 2].map((i) => `/api/voice/ack/${i}`));
       if (checkVersion(msg)) return;
       if (connectedBefore && log.children.length) {
         addEntry("note", "เชื่อมต่อใหม่แล้ว — บทสนทนาก่อนหน้าจะไม่ถูกจำ");
@@ -277,7 +278,7 @@ function handle(msg) {
       break;
 
     case "line_end":
-      pending.push(["end", ""]);
+      pending.push(["end", msg.kind || ""]); // kind may correct how the line was streamed
       if (!flushQueued) {
         flushQueued = true;
         requestAnimationFrame(flush);
@@ -337,7 +338,13 @@ function flush() {
   flushQueued = false;
   if (!pending.length || !current) return;
   for (const [kind, text] of pending) {
-    if (kind === "end") current.line = null;
+    if (kind === "end") {
+      if (text && current.line && current.line.dataset.kind !== text) {
+        current.line.className = `ln ${text}`;
+        current.line.dataset.kind = text;
+      }
+      current.line = null;
+    }
     else if (kind) appendLine(current, kind, text, true);
     else {
       if (!current.stream) current.body.append((current.stream = document.createTextNode("")));
@@ -406,7 +413,9 @@ function send() {
   voice.unlock(); // we're inside a user gesture: allowed to start audio
   voice.stop(); // a new question interrupts the old answer
   addEntry("user", text);
-  ws.send(JSON.stringify({ type: "chat", text, speak: speakNow() }));
+  const speak = speakNow();
+  ws.send(JSON.stringify({ type: "chat", text, speak }));
+  if (speak && anime) voice.playAck(); // "ん。" right away while the model thinks
   input.value = "";
   autosize();
   setBusy(true);

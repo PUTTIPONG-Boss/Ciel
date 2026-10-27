@@ -3,12 +3,15 @@
 
 import asyncio
 import json
+import logging
 import random
 from typing import AsyncIterator, Protocol
 
 import httpx
 
 from .config import Settings
+
+log = logging.getLogger("ciel.llm")
 
 
 class LLMError(Exception):
@@ -58,16 +61,39 @@ class OllamaLLM:
         self.client = httpx.AsyncClient(base_url=s.ollama_url, timeout=httpx.Timeout(300, connect=5))
         self.no_think_param: set[str] = set()  # models whose template rejects "think"
 
-    async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:
-        model = model or self.s.model
+    def _payload(self, messages: list[dict], model: str, stream: bool, num_predict: int) -> dict:
+        keep = self.s.keep_alive
         payload = {
             "model": model,
             "messages": messages,
-            "stream": True,
-            "options": {"temperature": self.s.temperature, "num_ctx": self.s.num_ctx},
+            "stream": stream,
+            # keep the model in RAM: reloading it + re-reading the prompt costs ~35 s on an M1
+            "keep_alive": int(keep) if keep.lstrip("-").isdigit() else keep,
+            "options": {
+                "temperature": self.s.temperature,
+                "num_ctx": self.s.num_ctx,
+                "num_predict": num_predict,  # also stops a model that loops forever
+            },
         }
         if model not in self.no_think_param:
             payload["think"] = self.s.think
+        return payload
+
+    async def warmup(self, messages: list[dict]) -> None:
+        """Load the model and put the persona prompt into Ollama's prompt cache
+        before the first real message (run at server start)."""
+        try:
+            r = await self.client.post("/api/chat", json=self._payload(messages, self.s.model, False, 1))
+            if r.status_code != 200 and "think" in r.text:
+                self.no_think_param.add(self.s.model)
+                r = await self.client.post("/api/chat", json=self._payload(messages, self.s.model, False, 1))
+            log.info("warm-up done (%s, HTTP %s)", self.s.model, r.status_code)
+        except httpx.HTTPError as e:
+            log.warning("warm-up failed: %s", e)
+
+    async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:
+        model = model or self.s.model
+        payload = self._payload(messages, model, True, self.s.num_predict)
         think = ThinkFilter()
         try:
             async with self.client.stream("POST", "/api/chat", json=payload) as r:
@@ -117,6 +143,9 @@ class MockLLM:
         "[tease]マスター、またお昼ご飯を忘れましたか？\n>> มาสเตอร์ ลืมกินข้าวเที่ยงอีกแล้วเหรอคะ?",
     ]
     ANIME_EN = "[calm]了解しました、マスター。\n>> Understood, master.\n[tease]今日も一緒に頑張りましょうね。\n>> Let's do our best together today."
+
+    async def warmup(self, messages: list[dict]) -> None:
+        pass
 
     async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:
         last = messages[-1]["content"].lower() if messages else ""
