@@ -36,7 +36,9 @@ generating = 0  # replies in progress — the updater waits for this to hit 0
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(updater.run_forever(lambda: generating == 0)) if settings.auto_update else None
     # load the model + cache the persona prompt now, not when the first message arrives
-    warm = asyncio.create_task(llm.warmup(personas.get().build_messages([])))
+    persona = personas.get()
+    probe = [{"role": "user", "content": persona.stamp("สวัสดี")}]
+    warm = asyncio.create_task(llm.warmup(persona.build_messages([]), persona.build_messages(probe)))
     yield
     warm.cancel()
     if task:

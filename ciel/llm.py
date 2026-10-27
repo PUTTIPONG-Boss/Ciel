@@ -108,15 +108,22 @@ class OllamaLLM:
     def _endpoint(self) -> str:
         return "/api/generate" if self.raw else "/api/chat"
 
-    async def warmup(self, messages: list[dict]) -> None:
+    async def warmup(self, messages: list[dict], probe: list[dict] | None = None) -> None:
         """Load the model and put the persona prompt into Ollama's prompt cache
         before the first real message (run at server start). Must be rendered
-        exactly like a real request, or the first message starts cold."""
+        exactly like a real request, or the first message starts cold.
+
+        `probe` (the same prompt + one short user message) then runs the small
+        "read a few tokens after the cache, write a few" request once: the first
+        such request after a start is ~4x slower on the M1's GPU (2.2 s instead
+        of 0.65 s, docs/model-compare/2026-10-27-1907-latency.md)."""
         try:
             r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
             if r.status_code != 200 and "think" in r.text and not self.raw:
                 self.no_think_param.add(self.s.model)
                 r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
+            if probe and r.status_code == 200:
+                r = await self.client.post(self._endpoint, json=self._payload(probe, self.s.model, False, 4))
             log.info("warm-up done (%s, %s, HTTP %s)", self.s.model, "raw" if self.raw else "chat", r.status_code)
         except httpx.HTTPError as e:
             log.warning("warm-up failed: %s", e)
@@ -152,9 +159,11 @@ class OllamaLLM:
                     if text:
                         yield text
                     if data.get("done"):
-                        # prompt_eval_count = prompt tokens NOT found in the cache
+                        # prompt_eval_count is the WHOLE prompt, cached or not — the time is what
+                        # tells a cache hit (~0.65 s) from a miss; ~/.ollama/logs/server.log has
+                        # llama.cpp's "cached n_tokens" for the exact split
                         ns = 1e9
-                        log.info("ollama: prefill %s tok %.2fs · gen %s tok %.2fs · load %.2fs",
+                        log.info("ollama: prompt %s tok, prefill %.2fs · gen %s tok %.2fs · load %.2fs",
                                  data.get("prompt_eval_count", 0), data.get("prompt_eval_duration", 0) / ns,
                                  data.get("eval_count", 0), data.get("eval_duration", 0) / ns,
                                  data.get("load_duration", 0) / ns)
@@ -186,7 +195,7 @@ class MockLLM:
     ]
     ANIME_EN = "[calm]了解しました。\n[tease]今日も一緒に頑張りましょうね。\n>> Understood, master.\n>> Let's do our best together today."
 
-    async def warmup(self, messages: list[dict]) -> None:
+    async def warmup(self, messages: list[dict], probe: list[dict] | None = None) -> None:
         pass
 
     async def stream(self, messages: list[dict], model: str | None = None) -> AsyncIterator[str]:

@@ -1,4 +1,4 @@
-# งานสำหรับ Claude บน Mac: วัดเวลาตอบและช่วงเงียบ (v0.3.6)
+# งานสำหรับ Claude บน Mac: วัดเวลาตอบและช่วงเงียบ (v0.3.7)
 
 > **วิธีใช้:** เปิด Claude Code บน Mac แล้วพิมพ์
 > `cd ~/Ciel && git pull แล้วทำตาม docs/MAC_TASK_LATENCY.md`
@@ -21,10 +21,14 @@ v0.3.1 นำข้อเสนอจาก `docs/model-compare/2026-10-27-speed
 
 **ได้ยินประโยคเนื้อหาจริงประโยคแรกภายใน 4 วินาทีหลังกดส่ง** โดยไม่นับเสียงรับคำ ん。/はい。 ส่วนที่เหลือพูดต่อได้
 
+- **v0.3.7 (ต่อจาก `2026-10-27-1907-latency.md`):**
+  - warm-up ยิงคำขอที่สอง (ข้อความ "สวัสดี" + สร้าง 4 token) เพื่ออุ่น GPU สำหรับคำขอเล็ก
+  - **รอบนี้อยากรู้:** ข้อแรก (สวัสดี) prefill ลดจาก 2.17s เหลือ ~0.65s ไหม และเสียงเนื้อหาแรกต่ำกว่า 4s ไหม → ถ้าได้ก็ผ่าน 8/8
+  - log เปลี่ยนเป็น `ollama: prompt N tok, prefill …s` (N คือความยาว prompt ทั้งหมด) ให้ดูเวลา prefill และ `cached n_tokens` ใน `~/.ollama/logs/server.log` เหมือนรอบที่แล้ว
 - **v0.3.6 (ต่อจาก `2026-10-27-1732-latency.md`):**
   - **ข้อแรกช้า (สวัสดี 4.9s):** ดึง log ของทุกข้อแล้วใส่ในรายงานเป็นตาราง
     ```bash
-    grep -aE "reply timing|ollama: prefill|U\+FFFD" ~/Library/Logs/Ciel.log | tail -20
+    grep -aE "reply timing|ollama: prompt|U\+FFFD" ~/Library/Logs/Ciel.log | tail -20
     ```
     `ollama: prefill N tok` คือจำนวน token ที่ไม่ได้มาจาก cache ถ้าข้อแรก N สูงกว่าข้ออื่นมาก แปลว่า cache ของ system prompt + ตัวอย่างหายไป (เช่น ถูกบทสนทนาอื่นทับ) ถ้า N ต่ำแต่ `first token` ยังช้า แปลว่าสาเหตุอยู่ที่อื่น
   - คำถามภาษาอังกฤษได้ซับอังกฤษแล้วหรือยัง (เวลาที่เติมหน้าข้อความมี `sub: English`)
@@ -57,7 +61,7 @@ v0.3.1 นำข้อเสนอจาก `docs/model-compare/2026-10-27-speed
 
 ```bash
 cd ~/Ciel && git pull --ff-only
-curl -s http://127.0.0.1:8080/api/health; echo     # ต้องเป็น 0.3.6 ขึ้นไป
+curl -s http://127.0.0.1:8080/api/health; echo     # ต้องเป็น 0.3.7 ขึ้นไป
 grep -E "warm-up" ~/Library/Logs/Ciel.log | tail -2  # ต้องเห็น "warm-up done (…, raw, HTTP 200)"
 ollama ps                                           # ต้องเห็น qwen3:8b และ UNTIL = Forever
 ```
