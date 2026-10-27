@@ -33,7 +33,8 @@ generating = 0  # replies in progress — the updater waits for this to hit 0
 warmed = None  # the persona whose prompt is in Ollama's cache
 warming: asyncio.Task | None = None
 background: set[asyncio.Task] = set()
-chatted = False  # has anyone sent a message since the server started?
+last_prompt: list[dict] | None = None  # the newest conversation's prompt, as it sits in Ollama's cache
+last_active = time.monotonic()  # last chat message or keep-warm probe
 
 
 def warm_up(persona) -> None:
@@ -47,22 +48,33 @@ def warm_up(persona) -> None:
     warming = asyncio.create_task(llm.warmup(*_warmup_messages(persona)))
 
 
-def _warmup_messages(persona) -> tuple[list[dict], list[dict]]:
-    probe = [{"role": "user", "content": persona.stamp("สวัสดี")}]
-    return persona.build_messages([]), persona.build_messages(probe)
+def _warmup_messages(persona, prompt: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
+    prompt = prompt or persona.build_messages([])
+    return prompt, prompt + [{"role": "user", "content": persona.stamp("สวัสดี")}]
 
 
-async def keep_warm_until_first_chat() -> None:
-    """Right after a restart the GPU cools down again if nobody talks: the
-    first reply 8 min after start-up read its prompt at 106 ms/token instead of
-    ~15 (docs/model-compare/2026-10-27-2239-latency.md). Repeat the short probe
-    for the first 15 minutes, until the first message. It stops as soon as
-    someone chats, so it never pushes a real conversation out of the cache."""
-    for _ in range(6):
-        await asyncio.sleep(150)
-        if chatted:
-            return
-        await llm.warmup(*_warmup_messages(personas.get()))
+async def keep_warm() -> None:
+    """The GPU cools down if nobody talks: the first reply 8 min after a
+    restart read its prompt at 106 ms/token instead of ~15
+    (docs/model-compare/2026-10-27-2239-latency.md). Repeating the short probe
+    fixed that (0.39-0.49 s, 2331-latency.md), so it now runs for as long as
+    the server is idle: every 150 s for the first 15 minutes, then every 5 min
+    (5 min after a probe was measured still warm).
+
+    The probe is the newest conversation's prompt + one short message, so the
+    cache still starts with that conversation and the next real message only
+    reads its own new tokens; a probe with the bare persona prompt would push
+    the conversation out of the cache."""
+    global last_active
+    started = time.monotonic()
+    while True:
+        await asyncio.sleep(30)
+        now = time.monotonic()
+        interval = 150 if now - started < 15 * 60 else 300
+        if generating or now - last_active < interval:
+            continue
+        last_active = now
+        await llm.warmup(*_warmup_messages(personas.get(), last_prompt))
 
 
 @asynccontextmanager
@@ -70,9 +82,9 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(updater.run_forever(lambda: generating == 0)) if settings.auto_update else None
     # load the model + cache the persona prompt now, not when the first message arrives
     warm_up(personas.get())
-    keep_warm = asyncio.create_task(keep_warm_until_first_chat())
+    warmer = asyncio.create_task(keep_warm())
     yield
-    keep_warm.cancel()
+    warmer.cancel()
     if warming:
         warming.cancel()
     if task:
@@ -135,7 +147,7 @@ def hello(persona) -> dict:
 
 @app.websocket("/ws")
 async def chat(ws: WebSocket):
-    global generating, chatted
+    global generating, last_prompt, last_active
     if not auth.is_authed(ws.cookies.get(auth.COOKIE)):
         await ws.close(code=4401)
         return
@@ -155,6 +167,7 @@ async def chat(ws: WebSocket):
             if kind == "reset":
                 history.clear()
                 persona = personas.get()  # pick up persona edits
+                last_prompt = None
                 warm_up(persona)
                 await channel.send_json(hello(persona))
                 continue
@@ -166,7 +179,7 @@ async def chat(ws: WebSocket):
                 continue
 
             history.append({"role": "user", "content": persona.stamp(text)})  # stamped once, see Persona.stamp
-            chatted = True
+            last_active = time.monotonic()
             speak = bool(msg.get("speak")) and tts.enabled()
 
             generating += 1
@@ -188,6 +201,8 @@ async def chat(ws: WebSocket):
                 task = asyncio.create_task(llm.warmup(persona.build_messages(history)))
                 background.add(task)  # keep a reference until it finishes
                 task.add_done_callback(background.discard)
+            last_prompt = persona.build_messages(history)  # what keep_warm probes with
+            last_active = time.monotonic()
     except WebSocketDisconnect:
         pass
 
