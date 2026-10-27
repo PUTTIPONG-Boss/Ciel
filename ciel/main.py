@@ -30,17 +30,30 @@ personas = PersonaStore(settings.persona_path)
 
 MAX_INPUT_CHARS = 4000
 generating = 0  # replies in progress — the updater waits for this to hit 0
+warmed = None  # the persona whose prompt is in Ollama's cache
+warming: asyncio.Task | None = None
+
+
+def warm_up(persona) -> None:
+    """Put this persona's prompt into Ollama's cache. Run at start and again
+    whenever persona/*.yaml changes (no restart for that), so the first message
+    after an edit doesn't re-read the whole ~5,000-token prompt."""
+    global warmed, warming
+    if persona is warmed:
+        return
+    warmed = persona
+    probe = [{"role": "user", "content": persona.stamp("สวัสดี")}]
+    warming = asyncio.create_task(llm.warmup(persona.build_messages([]), persona.build_messages(probe)))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(updater.run_forever(lambda: generating == 0)) if settings.auto_update else None
     # load the model + cache the persona prompt now, not when the first message arrives
-    persona = personas.get()
-    probe = [{"role": "user", "content": persona.stamp("สวัสดี")}]
-    warm = asyncio.create_task(llm.warmup(persona.build_messages([]), persona.build_messages(probe)))
+    warm_up(personas.get())
     yield
-    warm.cancel()
+    if warming:
+        warming.cancel()
     if task:
         task.cancel()
 
@@ -110,6 +123,7 @@ async def chat(ws: WebSocket):
     channel = Channel(ws)
     history: list[dict] = []
     persona = personas.get()
+    warm_up(persona)  # no-op unless the YAML changed since the last warm-up
     await channel.send_json(hello(persona))
 
     try:
@@ -120,6 +134,7 @@ async def chat(ws: WebSocket):
             if kind == "reset":
                 history.clear()
                 persona = personas.get()  # pick up persona edits
+                warm_up(persona)
                 await channel.send_json(hello(persona))
                 continue
 
