@@ -126,7 +126,7 @@ async def chat(ws: WebSocket):
             if not text:
                 continue
 
-            history.append({"role": "user", "content": text})
+            history.append({"role": "user", "content": persona.stamp(text)})  # stamped once, see Persona.stamp
             del history[: max(0, len(history) - settings.max_history)]
             speak = bool(msg.get("speak")) and tts.enabled()
 

@@ -94,7 +94,7 @@ async def main() -> None:
             continue
         rows = []
         for q in QUESTIONS:
-            raw, first, total = await ask(llm, model, persona.build_messages([{"role": "user", "content": q}]))
+            raw, first, total = await ask(llm, model, persona.build_messages([{"role": "user", "content": persona.stamp(q)}]))
             a = analyse(raw)
             rows.append((q, raw, first, total, a))
             print(f"  {total:5.1f}s  pairs {a['translated']}/{a['segments']}  natural {a['natural']:2d}  {q}")

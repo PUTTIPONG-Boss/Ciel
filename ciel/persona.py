@@ -10,7 +10,6 @@ from pathlib import Path
 
 import yaml
 
-THAI_DAYS = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"]
 
 
 @dataclass
@@ -69,7 +68,7 @@ class Persona:
             lines += [
                 "",
                 "# แท็กอารมณ์ (ควบคุมน้ำเสียงตอนพูด)",
-                "- ขึ้นต้นทุกคำตอบด้วยแท็กอารมณ์ และใส่แท็กใหม่หน้าประโยคที่อารมณ์เปลี่ยน เช่น [calm]...[shy]...",
+                "- ขึ้นต้นทุกคำตอบด้วยแท็กอารมณ์ และใส่แท็กใหม่เฉพาะหน้าประโยคที่อารมณ์เปลี่ยน (ไม่ต้องใส่ซ้ำทุกบรรทัด) เช่น [calm]...[shy]...",
                 "- แท็กจะถูกซ่อนจากหน้าจอ ใช้ได้เฉพาะแท็กเหล่านี้เท่านั้น:",
             ]
             lines += [f"  - [{tag}] {desc}" for tag, desc in self.emotions.items()]
@@ -80,7 +79,7 @@ class Persona:
                 "# รูปแบบคำตอบ (สำคัญที่สุด ต้องทำตามทุกครั้ง)",
                 f"- เสียงของ{self.name}เป็นภาษาญี่ปุ่นเสมอ ไม่ว่า{self.user_name}จะพิมพ์มาเป็นภาษาอะไร",
                 "- ตอบเป็นคู่บรรทัด ทีละประโยค:",
-                "  1) บรรทัดภาษาญี่ปุ่น 1 ประโยค ขึ้นต้นด้วยแท็กอารมณ์",
+                "  1) บรรทัดภาษาญี่ปุ่น 1 ประโยค (บรรทัดแรกขึ้นต้นด้วยแท็กอารมณ์)",
                 '  2) บรรทัดถัดไปขึ้นต้นด้วย ">> " ตามด้วยคำแปลของประโยคนั้น',
                 f"- คำแปลใช้ภาษาเดียวกับที่{self.user_name}พิมพ์มา (ภาษาไทยเป็นค่าเริ่มต้น ถ้าพิมพ์อังกฤษให้แปลเป็นอังกฤษ)",
                 "- คำแปลภาษาไทยต้องคงบุคลิก คำแทนตัว และคำลงท้ายตาม # วิธีพูด",
@@ -91,26 +90,31 @@ class Persona:
         lines += [
             "",
             "# ข้อมูลตอนนี้",
-            f"- ข้อความล่าสุดของ{self.user_name}ขึ้นต้นด้วยวันเวลาปัจจุบันในวงเล็บ ใช้เป็นข้อมูลเท่านั้น ไม่ต้องพูดถึงถ้าไม่ได้ถูกถาม",
+            f"- ข้อความของ{self.user_name}ขึ้นต้นด้วยวันเวลาตอนที่ส่ง เช่น [2026-10-27 Tue 15:10] ใช้เป็นข้อมูลเท่านั้น ไม่ต้องพูดถึงถ้าไม่ได้ถูกถาม และไม่ใช่ภาษาที่{self.user_name}ใช้",
         ]
         return "\n".join(lines)
 
-    def build_messages(self, history: list[dict], now: datetime | None = None) -> list[dict]:
-        """System prompt + examples + history. Everything before the last user
-        message stays byte-identical between turns, so Ollama's prompt cache can
-        skip re-reading it (~3,000 tokens, ~10 s on an M1). That's why the clock
-        is stamped onto the last user message here, not into the system prompt,
-        and never stored in `history`."""
+    @staticmethod
+    def stamp(text: str, now: datetime | None = None) -> str:
+        """Prefix a user message with when it was sent. Done ONCE, when the
+        message arrives, and stored in history that way: the clock can't live in
+        the system prompt (it would change the prompt every minute), and it must
+        not change on old messages either, or Ollama's prompt cache breaks from
+        that point on. Language-neutral, so an English question still looks
+        English to the model (a Thai date made it answer with Thai subtitles)."""
+        now = now or datetime.now()
+        return f"[{now:%Y-%m-%d %a %H:%M}]\n{text}"
+
+    def build_messages(self, history: list[dict]) -> list[dict]:
+        """System prompt + examples + history (user messages already stamped).
+        Every turn only appends to this list, so everything before the new user
+        message is byte-identical to last time and comes from the prompt cache
+        (~3,000 tokens would otherwise take ~10 s to re-read on an M1)."""
         messages = [{"role": "system", "content": self.system_prompt()}]
         for ex in self.examples:
             messages.append({"role": "user", "content": ex["user"]})
             messages.append({"role": "assistant", "content": ex["ciel"]})
-        messages += history
-        if history and history[-1]["role"] == "user":
-            now = now or datetime.now()
-            stamp = f"({'วัน' + THAI_DAYS[now.weekday()]}ที่ {now.day}/{now.month}/{now.year + 543} เวลา {now:%H:%M} น.)"
-            messages[-1] = {"role": "user", "content": f"{stamp}\n{history[-1]['content']}"}
-        return messages
+        return messages + history
 
 
 class PersonaStore:

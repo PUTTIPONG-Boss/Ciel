@@ -83,9 +83,13 @@ def ask(ws, text: str) -> dict:
 TARGET = 4.0  # seconds until the first real (content) sentence is heard
 
 
+ACK_WORDS = {"はい", "あ", "え", "ん", "うん", "えっと", "あの", "うーん", "へぇ", "ふーん", "ふむ", "了解", "了解です"}
+
+
 def is_ack(text: str) -> bool:
-    """The model's opening "……はい。" / "えっと。" line — short, no real content."""
-    return len(re.sub(r"[…。、？！?!\s]", "", text)) <= 8
+    """A bare acknowledgement line ("……はい。") with no real content. Since
+    v0.3.3 the model shouldn't write these (the browser plays one instead)."""
+    return re.sub(r"[…。、？！?!\s]", "", text) in ACK_WORDS
 
 
 def content_audio(r: dict) -> float | None:
@@ -149,13 +153,14 @@ def main() -> None:
         "| ช่วง | ค่าเฉลี่ย |",
         "|---|---|",
         f"| ตัวอักษรแรกขึ้นจอ | {stats([r['first_text'] for r in ok])} |",
-        f"| เสียงบรรทัดแรก (มักเป็นคำรับคำ はい。) | {stats([r['first_audio'] for r in ok])} |",
+        f"| เสียงบรรทัดแรก | {stats([r['first_audio'] for r in ok])} |",
         f"| **เสียงประโยคเนื้อหาแรก** (เป้า ≤ {TARGET:.0f}s) | **{stats(content)}** |",
         f"| ข้อความครบ | {stats([r['text_done'] for r in ok])} |",
         f"| เสียงครบทุกประโยค | {stats([r['audio_done'] for r in ok])} |",
         "",
         f"- **ผ่านเป้า ≤ {TARGET:.0f} วินาที: {passed}/{len(ok)} ข้อ**",
-        f"- บรรทัดแรกเป็นคำรับคำสั้น: {short_first}/{len(first_lines)}",
+        f"- บรรทัดแรกเป็นคำรับคำเปล่าๆ (ไม่ควรมีแล้ว): {short_first}/{len(first_lines)}",
+        f"- ความยาวบรรทัดแรก (ตัวอักษร): เฉลี่ย {statistics.mean([len(t) for t in first_lines]) if first_lines else 0:.1f}",
         f"- ประโยคเนื้อหาที่มีคำแปล: {translated}/{segs} · เสียงสร้างไม่สำเร็จ: {sum(r['audio_errors'] for r in ok)}",
         "",
         "## รายข้อ",

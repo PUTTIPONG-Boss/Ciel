@@ -137,12 +137,12 @@ class MockLLM:
     }
 
     ANIME = [
-        "[calm]……はい。\n[calm]今はテストモードです。\n>> ตอนนี้เป็นโหมดทดสอบค่ะ\n"
+        "[calm]……テストモードです。\n>> ...โหมดทดสอบค่ะ\n"
         "[concern]まだ本物の頭脳には繋がっていません。\n>> ยังไม่ได้เชื่อมต่อกับสมองจริงค่ะ",
-        "[shy]な、何ですか……。\n[shy]べ、別に大したことじゃありません。\n>> เ-เรื่องแค่นี้ไม่ใช่เรื่องใหญ่หรอกค่ะ\n"
+        "[shy]な、何ですか……。\n>> อ-อะไรกันคะ...\n"
         "[tease]マスター、またお昼ご飯を忘れましたか？\n>> มาสเตอร์ ลืมกินข้าวเที่ยงอีกแล้วเหรอคะ?",
     ]
-    ANIME_EN = "[calm]……はい。\n[calm]了解しました、マスター。\n>> Understood, master.\n[tease]今日も一緒に頑張りましょうね。\n>> Let's do our best together today."
+    ANIME_EN = "[calm]了解しました。\n>> Understood, master.\n[tease]今日も一緒に頑張りましょうね。\n>> Let's do our best together today."
 
     async def warmup(self, messages: list[dict]) -> None:
         pass
