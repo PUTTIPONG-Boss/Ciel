@@ -223,6 +223,20 @@ class AnimeStream:
             text = self._split_number(text.lstrip())[1]
         return TAG.sub("", text).lstrip()
 
+    def _is_japanese_sentence(self, visible: str) -> bool:
+        """An unnumbered '>>' line that is mostly Japanese with no Thai: it can't
+        be a Thai subtitle, and English ones are Latin letters, not kana."""
+        line = self.line.lstrip()
+        for p in SUB_PREFIXES:
+            if line.startswith(p):
+                line = line[len(p):]
+                break
+        if self._split_number(line.lstrip())[0] is not None:
+            return False
+        ja = sum(1 for c in visible if script(c) == "ja")
+        latin = sum(1 for c in visible if c.isascii() and c.isalpha())
+        return ja > latin and not any(script(c) == "th" for c in visible)
+
     def _split_number(self, text: str) -> tuple[int | None, str]:
         """'1 ...หิวไหมคะ' → (1, '...หิวไหมคะ'). Only numbers of lines spoken so
         far count, so a translation that really starts with a number survives."""
@@ -257,6 +271,13 @@ class AnimeStream:
                 out.append(("delta", "jp", visible[self.sent:]))
                 self.sent = len(visible)
             self.kind = "sub"
+        # ...and the reverse: a Japanese sentence the model wrote after ">>"
+        # (">> RAMは一時保存、SSDは長期保存です。") is a line to speak, not a subtitle
+        elif self.kind == "sub" and self._is_japanese_sentence(visible):
+            if visible[self.sent:]:
+                out.append(("delta", "sub", visible[self.sent:]))
+                self.sent = len(visible)
+            self.kind = "jp"
         if visible[self.sent:]:
             out.append(("delta", self.kind, visible[self.sent:]))
         out.append(("line_end", self.kind))

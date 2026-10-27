@@ -33,6 +33,7 @@ generating = 0  # replies in progress — the updater waits for this to hit 0
 warmed = None  # the persona whose prompt is in Ollama's cache
 warming: asyncio.Task | None = None
 background: set[asyncio.Task] = set()
+chatted = False  # has anyone sent a message since the server started?
 
 
 def warm_up(persona) -> None:
@@ -43,8 +44,25 @@ def warm_up(persona) -> None:
     if persona is warmed:
         return
     warmed = persona
+    warming = asyncio.create_task(llm.warmup(*_warmup_messages(persona)))
+
+
+def _warmup_messages(persona) -> tuple[list[dict], list[dict]]:
     probe = [{"role": "user", "content": persona.stamp("สวัสดี")}]
-    warming = asyncio.create_task(llm.warmup(persona.build_messages([]), persona.build_messages(probe)))
+    return persona.build_messages([]), persona.build_messages(probe)
+
+
+async def keep_warm_until_first_chat() -> None:
+    """Right after a restart the GPU cools down again if nobody talks: the
+    first reply 8 min after start-up read its prompt at 106 ms/token instead of
+    ~15 (docs/model-compare/2026-10-27-2239-latency.md). Repeat the short probe
+    for the first 15 minutes, until the first message. It stops as soon as
+    someone chats, so it never pushes a real conversation out of the cache."""
+    for _ in range(6):
+        await asyncio.sleep(150)
+        if chatted:
+            return
+        await llm.warmup(*_warmup_messages(personas.get()))
 
 
 @asynccontextmanager
@@ -52,7 +70,9 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(updater.run_forever(lambda: generating == 0)) if settings.auto_update else None
     # load the model + cache the persona prompt now, not when the first message arrives
     warm_up(personas.get())
+    keep_warm = asyncio.create_task(keep_warm_until_first_chat())
     yield
+    keep_warm.cancel()
     if warming:
         warming.cancel()
     if task:
@@ -115,7 +135,7 @@ def hello(persona) -> dict:
 
 @app.websocket("/ws")
 async def chat(ws: WebSocket):
-    global generating
+    global generating, chatted
     if not auth.is_authed(ws.cookies.get(auth.COOKIE)):
         await ws.close(code=4401)
         return
@@ -146,6 +166,7 @@ async def chat(ws: WebSocket):
                 continue
 
             history.append({"role": "user", "content": persona.stamp(text)})  # stamped once, see Persona.stamp
+            chatted = True
             speak = bool(msg.get("speak")) and tts.enabled()
 
             generating += 1
