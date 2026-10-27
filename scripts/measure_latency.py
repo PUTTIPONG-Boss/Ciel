@@ -51,13 +51,15 @@ def ask(ws, text: str) -> dict:
     t0 = time.perf_counter()
     at = lambda: time.perf_counter() - t0  # noqa: E731
     m = {"q": text, "first_text": None, "first_line": None, "first_audio": None, "text_done": None, "audio_done": None,
-         "segments": [], "subs": {}, "audio_errors": 0, "error": None, "audio_at": {}}
+         "segments": [], "subs": {}, "audio_errors": 0, "error": None, "audio_at": {}, "audio_bytes": {}}
     ws.send(json.dumps({"type": "chat", "text": text, "speak": True}))
     while True:
         raw = ws.recv(timeout=180)
         if isinstance(raw, bytes):
             m["first_audio"] = m["first_audio"] or at()
-            m["audio_at"][int.from_bytes(raw[:4], "big")] = at()
+            seq = int.from_bytes(raw[:4], "big")
+            m["audio_at"][seq] = at()
+            m["audio_bytes"][seq] = len(raw) - 4
             continue
         msg = json.loads(raw)
         kind = msg["type"]
@@ -98,6 +100,22 @@ def content_audio(r: dict) -> float | None:
     return r["audio_at"].get(seq)
 
 
+MP3_BYTES_PER_SEC = 6000  # edge-tts sends 48 kbit/s MP3
+
+
+def playback(r: dict) -> tuple[float | None, float]:
+    """Simulate the phone's player: a sentence starts once its audio has
+    arrived and the one before it has finished. Returns (when the last
+    sentence finishes, total silence between sentences)."""
+    end, silence = None, 0.0
+    for seq in sorted(r["audio_at"]):
+        start = r["audio_at"][seq] if end is None else max(r["audio_at"][seq], end)
+        if end is not None:
+            silence += start - end
+        end = start + r["audio_bytes"][seq] / MP3_BYTES_PER_SEC
+    return end, silence
+
+
 def stats(values: list[float | None]) -> str:
     v = [x for x in values if x is not None]
     if not v:
@@ -130,7 +148,8 @@ def main() -> None:
             first = " / ".join(t for _, t in r["segments"][:2]) or "—"
             c = content_audio(r)
             mark = "✅" if c is not None and c <= TARGET else "❌"
-            print(f"{mark} {c or 0:4.1f}s content voice · {r['first_audio'] or 0:4.1f}s first voice · {r['text_done'] or 0:4.1f}s text · {q}  →  {first}")
+            done, silence = playback(r)
+            print(f"{mark} {c or 0:4.1f}s content voice · {silence:3.1f}s silent between · {done or 0:4.1f}s spoken · {r['text_done'] or 0:4.1f}s text · {q}  →  {first}")
 
     ok = [r for r in results if not r["error"]]
     first_lines = [r["segments"][0][1] for r in ok if r["segments"]]
@@ -156,7 +175,9 @@ def main() -> None:
         f"| เสียงบรรทัดแรก | {stats([r['first_audio'] for r in ok])} |",
         f"| **เสียงประโยคเนื้อหาแรก** (เป้า ≤ {TARGET:.0f}s) | **{stats(content)}** |",
         f"| ข้อความครบ | {stats([r['text_done'] for r in ok])} |",
-        f"| เสียงครบทุกประโยค | {stats([r['audio_done'] for r in ok])} |",
+        f"| เสียงไฟล์สุดท้ายมาถึง | {stats([r['audio_done'] for r in ok])} |",
+        f"| **พูดจบจริง** (จำลองการเล่น) | {stats([playback(r)[0] for r in ok])} |",
+        f"| **เงียบรวมระหว่างประโยค** | {stats([playback(r)[1] for r in ok])} |",
         "",
         f"- **ผ่านเป้า ≤ {TARGET:.0f} วินาที: {passed}/{len(ok)} ข้อ**",
         f"- บรรทัดแรกเป็นคำรับคำเปล่าๆ (ไม่ควรมีแล้ว): {short_first}/{len(first_lines)}",
@@ -165,17 +186,18 @@ def main() -> None:
         "",
         "## รายข้อ",
         "",
-        "| คำถาม | เสียงเนื้อหาแรก | เสียงแรก | ข้อความครบ | เสียงครบ | สองบรรทัดแรก |",
-        "|---|---|---|---|---|---|",
+        "| คำถาม | เสียงเนื้อหาแรก | เสียงแรก | ข้อความครบ | พูดจบ | เงียบระหว่างประโยค | สองบรรทัดแรก |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in results:
         if r["error"]:
-            lines.append(f"| {r['q']} | ❌ {r['error']} | | | |")
+            lines.append(f"| {r['q']} | ❌ {r['error']} | | | | | |")
             continue
         first = " / ".join(t for _, t in r["segments"][:2]) or "—"
         c = content_audio(r)
         mark = "✅" if c is not None and c <= TARGET else "❌"
-        lines.append(f"| {r['q']} | {mark} {c or 0:.1f}s | {r['first_audio'] or 0:.1f}s | {r['text_done'] or 0:.1f}s | {r['audio_done'] or 0:.1f}s | {first} |")
+        done, silence = playback(r)
+        lines.append(f"| {r['q']} | {mark} {c or 0:.1f}s | {r['first_audio'] or 0:.1f}s | {r['text_done'] or 0:.1f}s | {done or 0:.1f}s | {silence:.1f}s | {first} |")
     lines += ["", "## คำตอบเต็ม", ""]
     for r in ok:
         lines += [f"**{r['q']}**", ""]

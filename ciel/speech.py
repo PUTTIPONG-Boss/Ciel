@@ -149,13 +149,18 @@ def has_japanese(text: str) -> bool:
 
 class AnimeStream:
     """'Anime' style: Ciel always speaks Japanese and the screen shows a
-    translation. The model answers in line pairs:
+    translation. The model writes every Japanese line first, then the
+    translations in the same order (so the next sentence's voice isn't held
+    up by the previous one's translation):
 
-        [shy]べ、別に大したことじゃありませんよ。
+        [shy]べ、別に……。
+        大したことじゃありませんよ。
+        >> ม-ไม่ใช่ว่า...
         >> ไม่ใช่เรื่องใหญ่หรอกค่ะ
 
-    Japanese lines become spoken segments; '>>' lines are subtitles for the
-    segment before them. Events:
+    Japanese lines become spoken segments; the n-th '>>' line is the subtitle
+    of the oldest segment still without one (the older pair-by-pair layout
+    works the same way). Events:
       ("delta", "jp"|"sub", text)  text to append to the current line on screen
       ("line_end", kind)           that line is finished
       ("segment", Segment)         a Japanese line to speak
@@ -165,7 +170,7 @@ class AnimeStream:
     def __init__(self):
         self.emotion = "calm"
         self.seq = -1  # index of the last spoken segment
-        self.translated = True  # has segment `seq` got its translation yet?
+        self.untranslated: list[int] = []  # segments waiting for their '>>' line, oldest first
         self._reset_line()
 
     def _reset_line(self):
@@ -250,16 +255,13 @@ class AnimeStream:
             spoken = clean_for_speech(visible)
             if has_japanese(spoken):
                 self.seq += 1
-                self.translated = False
+                self.untranslated.append(self.seq)
                 out.append(("segment", Segment(spoken, "ja", self.emotion)))
         elif self.kind == "sub":
-            # first translation after a Japanese line belongs to it; any extra
-            # stray line is shown on its own (seq -1: no voice)
-            if self.seq >= 0 and not self.translated:
-                self.translated = True
-                out.append(("sub", self.seq, visible))
-            else:
-                out.append(("sub", -1, visible))
+            # a translation belongs to the oldest untranslated Japanese line;
+            # an extra stray line is shown on its own (seq -1: no voice)
+            seq = self.untranslated.pop(0) if self.untranslated else -1
+            out.append(("sub", seq, visible))
         self._reset_line()
         return out
 
