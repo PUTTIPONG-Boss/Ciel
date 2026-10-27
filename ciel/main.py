@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import mimetypes
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
@@ -176,6 +177,12 @@ async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool)
     audio_jobs: asyncio.Queue = asyncio.Queue()
     limit = asyncio.Semaphore(2)  # don't hammer the TTS service
     seq = 0
+    # when each stage was first reached, in seconds since the reply started (logged at the end)
+    t0 = time.perf_counter()
+    marks: dict[str, float] = {}
+
+    def mark(name: str) -> None:
+        marks.setdefault(name, time.perf_counter() - t0)
 
     async def synth(seg) -> bytes:
         async with limit:
@@ -186,6 +193,7 @@ async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool)
             n, task = job
             try:
                 await channel.send_bytes(n.to_bytes(4, "big") + await task)
+                mark("first audio")
             except tts.TTSError as e:
                 log.warning("%s", e)
                 await channel.send_json({"type": "audio_error", "seq": n})
@@ -209,6 +217,7 @@ async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool)
             if ev[0] == "segment":
                 seg = ev[1]
                 gain = tts.gain(tts.prosody(voice_cfg, seg.lang, seg.emotion)["volume"]) if speak else 1
+                mark("first sentence")
                 await channel.send_json({"type": "segment", "seq": seq, "lang": seg.lang, "emotion": seg.emotion, "text": seg.text, "audio": speak, "gain": gain})
                 if speak:
                     await audio_jobs.put((seq, asyncio.create_task(synth(seg))))
@@ -229,14 +238,18 @@ async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool)
     raw = ""
     try:
         async for delta in llm.stream(messages):
+            mark("first token")
             raw += delta
             await emit(stream.events(delta))
         await emit(stream.end_events())
         await channel.send_json({"type": "end", "text": strip_tags(raw), "structured": anime})
+        mark("text done")
     finally:
         if sender:
             await audio_jobs.put(None)
             await sender
+        mark("audio done")
+        log.info("reply timing: %s", " · ".join(f"{k} {v:.2f}s" for k, v in marks.items()))
     # unstripped: the next prompt must repeat this reply exactly as generated (prompt cache)
     return raw
 

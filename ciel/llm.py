@@ -143,10 +143,21 @@ class OllamaLLM:
                     if "error" in data:
                         raise LLMError(data["error"])
                     chunk = data.get("response", "") if self.raw else data.get("message", {}).get("content", "")
+                    if "�" in chunk:
+                        # Ollama itself sometimes streams a broken UTF-8 piece of a Thai
+                        # character (httpx decodes split bytes correctly); don't show or speak it
+                        log.warning("Ollama sent U+FFFD in %r", chunk)
+                        chunk = chunk.replace("�", "")
                     text = think.feed(chunk or "")
                     if text:
                         yield text
                     if data.get("done"):
+                        # prompt_eval_count = prompt tokens NOT found in the cache
+                        ns = 1e9
+                        log.info("ollama: prefill %s tok %.2fs · gen %s tok %.2fs · load %.2fs",
+                                 data.get("prompt_eval_count", 0), data.get("prompt_eval_duration", 0) / ns,
+                                 data.get("eval_count", 0), data.get("eval_duration", 0) / ns,
+                                 data.get("load_duration", 0) / ns)
                         break
         except httpx.ConnectError as e:
             raise LLMError(f"เชื่อมต่อ Ollama ที่ {self.s.ollama_url} ไม่ได้ — เปิด Ollama อยู่หรือเปล่า?") from e

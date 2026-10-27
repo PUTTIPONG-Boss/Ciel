@@ -11,6 +11,18 @@ from pathlib import Path
 import yaml
 
 
+EXAMPLE_TIME = datetime(2026, 1, 5, 20, 30)
+
+
+def subtitle_language(text: str) -> str:
+    """Which language the subtitles should be in for this message: English
+    only when it is written in English (Latin letters, no Thai or Japanese),
+    Thai otherwise."""
+    thai = any("฀" <= c <= "๿" for c in text)
+    japanese = any("぀" <= c <= "ヿ" or "一" <= c <= "鿿" for c in text)
+    latin = any(c.isascii() and c.isalpha() for c in text)
+    return "English" if latin and not thai and not japanese else "Thai"
+
 
 @dataclass
 class Persona:
@@ -96,16 +108,21 @@ class Persona:
         ]
         return "\n".join(lines)
 
-    @staticmethod
-    def stamp(text: str, now: datetime | None = None) -> str:
+    def stamp(self, text: str, now: datetime | None = None) -> str:
         """Prefix a user message with when it was sent. Done ONCE, when the
         message arrives, and stored in history that way: the clock can't live in
         the system prompt (it would change the prompt every minute), and it must
         not change on old messages either, or Ollama's prompt cache breaks from
         that point on. Language-neutral, so an English question still looks
-        English to the model (a Thai date made it answer with Thai subtitles)."""
+        English to the model (a Thai date made it answer with Thai subtitles).
+
+        Anime style also names the subtitle language: with only Thai examples
+        the model kept writing Thai subtitles for English questions."""
         now = now or datetime.now()
-        return f"[{now:%Y-%m-%d %a %H:%M}]\n{text}"
+        head = f"{now:%Y-%m-%d %a %H:%M}"
+        if self.style == "anime":
+            head += f" · sub: {subtitle_language(text)}"
+        return f"[{head}]\n{text}"
 
     def build_messages(self, history: list[dict]) -> list[dict]:
         """System prompt + examples + history (user messages already stamped).
@@ -114,7 +131,10 @@ class Persona:
         (~3,000 tokens would otherwise take ~10 s to re-read on an M1)."""
         messages = [{"role": "system", "content": self.system_prompt()}]
         for ex in self.examples:
-            messages.append({"role": "user", "content": ex["user"]})
+            # stamped like real messages (fixed time: the prompt must not change) so
+            # the examples show which "sub:" goes with which subtitle language
+            user = self.stamp(ex["user"], EXAMPLE_TIME) if self.style == "anime" else ex["user"]
+            messages.append({"role": "user", "content": user})
             messages.append({"role": "assistant", "content": ex["ciel"]})
         return messages + history
 

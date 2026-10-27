@@ -1,4 +1,4 @@
-# งานสำหรับ Claude บน Mac: วัดเวลาตอบและช่วงเงียบ (v0.3.5)
+# งานสำหรับ Claude บน Mac: วัดเวลาตอบและช่วงเงียบ (v0.3.6)
 
 > **วิธีใช้:** เปิด Claude Code บน Mac แล้วพิมพ์
 > `cd ~/Ciel && git pull แล้วทำตาม docs/MAC_TASK_LATENCY.md`
@@ -21,6 +21,14 @@ v0.3.1 นำข้อเสนอจาก `docs/model-compare/2026-10-27-speed
 
 **ได้ยินประโยคเนื้อหาจริงประโยคแรกภายใน 4 วินาทีหลังกดส่ง** โดยไม่นับเสียงรับคำ ん。/はい。 ส่วนที่เหลือพูดต่อได้
 
+- **v0.3.6 (ต่อจาก `2026-10-27-1732-latency.md`):**
+  - **ข้อแรกช้า (สวัสดี 4.9s):** ดึง log ของทุกข้อแล้วใส่ในรายงานเป็นตาราง
+    ```bash
+    grep -aE "reply timing|ollama: prefill|U\+FFFD" ~/Library/Logs/Ciel.log | tail -20
+    ```
+    `ollama: prefill N tok` คือจำนวน token ที่ไม่ได้มาจาก cache ถ้าข้อแรก N สูงกว่าข้ออื่นมาก แปลว่า cache ของ system prompt + ตัวอย่างหายไป (เช่น ถูกบทสนทนาอื่นทับ) ถ้า N ต่ำแต่ `first token` ยังช้า แปลว่าสาเหตุอยู่ที่อื่น
+  - คำถามภาษาอังกฤษได้ซับอังกฤษแล้วหรือยัง (เวลาที่เติมหน้าข้อความมี `sub: English`)
+  - มี warning `Ollama sent U+FFFD` ไหม กี่ครั้ง
 - **v0.3.5 (ทำตามข้อเสนอ raw prompt ใน `2026-10-27-1538-latency.md`):**
   - `OllamaLLM` ใช้ `/api/generate` แบบ `raw: true` และสร้าง prompt ChatML เอง (`render_chatml` ใน `ciel/llm.py`)
   - **รอบนี้อยากรู้:** prefill ข้อ 2 ขึ้นไปคงที่ ~0.65–0.7 วินาทีไหม (วัดตรงกับ Ollama แบบที่ทำในรายงาน 1538 ได้ โดยใช้ `render_chatml`)
@@ -49,7 +57,7 @@ v0.3.1 นำข้อเสนอจาก `docs/model-compare/2026-10-27-speed
 
 ```bash
 cd ~/Ciel && git pull --ff-only
-curl -s http://127.0.0.1:8080/api/health; echo     # ต้องเป็น 0.3.5 ขึ้นไป
+curl -s http://127.0.0.1:8080/api/health; echo     # ต้องเป็น 0.3.6 ขึ้นไป
 grep -E "warm-up" ~/Library/Logs/Ciel.log | tail -2  # ต้องเห็น "warm-up done (…, raw, HTTP 200)"
 ollama ps                                           # ต้องเห็น qwen3:8b และ UNTIL = Forever
 ```
