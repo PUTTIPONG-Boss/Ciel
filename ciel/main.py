@@ -35,6 +35,7 @@ warming: asyncio.Task | None = None
 background: set[asyncio.Task] = set()
 last_prompt: list[dict] | None = None  # the newest conversation's prompt, as it sits in Ollama's cache
 last_active = time.monotonic()  # last chat message or keep-warm probe
+probing: asyncio.Task | None = None  # keep_warm's request in flight
 
 
 def warm_up(persona) -> None:
@@ -64,8 +65,13 @@ async def keep_warm() -> None:
     The probe is the newest conversation's prompt + one short message, so the
     cache still starts with that conversation and the next real message only
     reads its own new tokens; a probe with the bare persona prompt would push
-    the conversation out of the cache."""
-    global last_active
+    the conversation out of the cache.
+
+    One round took ~5.3 s of GPU time with the start-up probe (2 × 16
+    tokens, 2026-10-28-0141-latency.md), so it uses a 2-token probe, and a
+    message that arrives meanwhile cancels it (Ollama stops a request whose
+    connection closes) instead of waiting behind it."""
+    global last_active, probing
     started = time.monotonic()
     while True:
         await asyncio.sleep(30)
@@ -74,7 +80,9 @@ async def keep_warm() -> None:
         if generating or now - last_active < interval:
             continue
         last_active = now
-        await llm.warmup(*_warmup_messages(personas.get(), last_prompt))
+        probing = asyncio.create_task(llm.warmup(*_warmup_messages(personas.get(), last_prompt), probe_tokens=2, probe_runs=1))
+        await asyncio.wait({probing})  # doesn't raise when a message cancels it
+        probing = None
 
 
 @asynccontextmanager
@@ -180,6 +188,8 @@ async def chat(ws: WebSocket):
 
             history.append({"role": "user", "content": persona.stamp(text)})  # stamped once, see Persona.stamp
             last_active = time.monotonic()
+            if probing:
+                probing.cancel()  # don't make the reply wait behind a keep-warm probe
             speak = bool(msg.get("speak")) and tts.enabled()
 
             generating += 1

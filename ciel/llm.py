@@ -108,7 +108,7 @@ class OllamaLLM:
     def _endpoint(self) -> str:
         return "/api/generate" if self.raw else "/api/chat"
 
-    async def warmup(self, messages: list[dict], probe: list[dict] | None = None) -> None:
+    async def warmup(self, messages: list[dict], probe: list[dict] | None = None, probe_tokens: int = 16, probe_runs: int = 2) -> None:
         """Load the model and put the persona prompt into Ollama's prompt cache
         before the first real message (run at server start). Must be rendered
         exactly like a real request, or the first message starts cold.
@@ -118,15 +118,16 @@ class OllamaLLM:
         such request after a start is ~4x slower on the M1's GPU (2.2 s instead
         of 0.65 s, docs/model-compare/2026-10-27-1907-latency.md). One
         non-streamed 4-token probe wasn't enough (2141-latency.md), so it now
-        goes through stream() exactly like a reply, twice."""
+        goes through stream() exactly like a reply, twice. keep_warm uses a
+        lighter probe (1 run, 2 tokens): the GPU is only cooling, not cold."""
         try:
             r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
             if r.status_code != 200 and "think" in r.text and not self.raw:
                 self.no_think_param.add(self.s.model)
                 r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
             if probe and r.status_code == 200:
-                for _ in range(2):
-                    async for _ in self.stream(probe, num_predict=16):
+                for _ in range(probe_runs):
+                    async for _ in self.stream(probe, num_predict=probe_tokens):
                         pass
             log.info("warm-up done (%s, %s, HTTP %s)", self.s.model, "raw" if self.raw else "chat", r.status_code)
         except (httpx.HTTPError, LLMError) as e:
@@ -199,7 +200,7 @@ class MockLLM:
     ]
     ANIME_EN = "[calm]了解しました。\n[tease]今日も一緒に頑張りましょうね。\n>> 1 Understood, master.\n>> 2 Let's do our best together today."
 
-    async def warmup(self, messages: list[dict], probe: list[dict] | None = None) -> None:
+    async def warmup(self, messages: list[dict], probe: list[dict] | None = None, probe_tokens: int = 16, probe_runs: int = 2) -> None:
         pass
 
     async def stream(self, messages: list[dict], model: str | None = None, num_predict: int | None = None) -> AsyncIterator[str]:

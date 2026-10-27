@@ -107,6 +107,10 @@ class Persona:
             "# ข้อมูลตอนนี้",
             f"- ข้อความของ{self.user_name}ขึ้นต้นด้วยวันเวลาตอนที่ส่ง เช่น [2026-10-27 Tue 15:10] ใช้เป็นข้อมูลเท่านั้น ไม่ต้องพูดถึงถ้าไม่ได้ถูกถาม และไม่ใช่ภาษาที่{self.user_name}ใช้",
         ]
+        if self.style == "anime":
+            # the examples sit in the chat as earlier turns; asked "what were we just
+            # talking about?" the model answered from them (2026-10-28-0141-latency.md)
+            lines.append(f"- ข้อความที่ลงเวลา {EXAMPLE_TIME:%Y-%m-%d %a %H:%M} เป็นตัวอย่างเท่านั้น ไม่ใช่บทสนทนาจริง ถ้าถูกถามว่าคุยอะไรกันไป ให้ดูเฉพาะข้อความหลังจากนั้น")
         return "\n".join(lines)
 
     def stamp(self, text: str, now: datetime | None = None) -> str:
