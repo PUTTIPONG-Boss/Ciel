@@ -141,6 +141,7 @@ class SpeechStream:
 
 
 SUB_PREFIXES = (">>", "＞＞", "»")
+SUB_NUMBER = re.compile(r"(\d{1,2})(?:[.)．:、]\s*|\s+|$)")  # '>> 2 …', '>> 2. …'
 
 
 def has_japanese(text: str) -> bool:
@@ -155,12 +156,14 @@ class AnimeStream:
 
         [shy]べ、別に……。
         大したことじゃありませんよ。
-        >> ม-ไม่ใช่ว่า...
-        >> ไม่ใช่เรื่องใหญ่หรอกค่ะ
+        >> 1 ม-ไม่ได้...
+        >> 2 ไม่ใช่เรื่องใหญ่หรอกค่ะ
 
-    Japanese lines become spoken segments; the n-th '>>' line is the subtitle
-    of the oldest segment still without one (the older pair-by-pair layout
-    works the same way). Events:
+    Japanese lines become spoken segments. A '>> n' line is the subtitle of
+    Japanese line n: numbering keeps each translation tied to its own
+    sentence (unnumbered, the model drifted and translated the user's message
+    or the neighbouring line instead). Without a usable number a translation
+    goes to the oldest line still without one. Events:
       ("delta", "jp"|"sub", text)  text to append to the current line on screen
       ("line_end", kind)           that line is finished
       ("segment", Segment)         a Japanese line to speak
@@ -217,7 +220,16 @@ class AnimeStream:
                 if text.startswith(p):
                     text = text[len(p):]
                     break
+            text = self._split_number(text.lstrip())[1]
         return TAG.sub("", text).lstrip()
+
+    def _split_number(self, text: str) -> tuple[int | None, str]:
+        """'1 ...หิวไหมคะ' → (1, '...หิวไหมคะ'). Only numbers of lines spoken so
+        far count, so a translation that really starts with a number survives."""
+        m = SUB_NUMBER.match(text)
+        if m and 1 <= int(m.group(1)) <= self.seq + 1:
+            return int(m.group(1)), text[m.end():]
+        return None, text
 
     def _stream_line(self) -> list[tuple]:
         if self.kind is None:
@@ -258,9 +270,19 @@ class AnimeStream:
                 self.untranslated.append(self.seq)
                 out.append(("segment", Segment(spoken, "ja", self.emotion)))
         elif self.kind == "sub":
-            # a translation belongs to the oldest untranslated Japanese line;
+            # '>> n' belongs to line n; otherwise to the oldest untranslated line;
             # an extra stray line is shown on its own (seq -1: no voice)
-            seq = self.untranslated.pop(0) if self.untranslated else -1
+            line = self.line.lstrip()
+            for p in SUB_PREFIXES:
+                if line.startswith(p):
+                    line = line[len(p):]
+                    break
+            n = self._split_number(line.lstrip())[0]
+            if n is not None and n - 1 in self.untranslated:
+                seq = n - 1
+                self.untranslated.remove(seq)
+            else:
+                seq = self.untranslated.pop(0) if self.untranslated else -1
             out.append(("sub", seq, visible))
         self._reset_line()
         return out
