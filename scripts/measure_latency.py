@@ -13,6 +13,7 @@ re-read the whole ~3,000-token prompt, so the default gap is just over a minute.
 
 import argparse
 import json
+import re
 import statistics
 import sys
 import time
@@ -50,12 +51,13 @@ def ask(ws, text: str) -> dict:
     t0 = time.perf_counter()
     at = lambda: time.perf_counter() - t0  # noqa: E731
     m = {"q": text, "first_text": None, "first_line": None, "first_audio": None, "text_done": None, "audio_done": None,
-         "segments": [], "subs": {}, "audio_errors": 0, "error": None}
+         "segments": [], "subs": {}, "audio_errors": 0, "error": None, "audio_at": {}}
     ws.send(json.dumps({"type": "chat", "text": text, "speak": True}))
     while True:
         raw = ws.recv(timeout=180)
         if isinstance(raw, bytes):
             m["first_audio"] = m["first_audio"] or at()
+            m["audio_at"][int.from_bytes(raw[:4], "big")] = at()
             continue
         msg = json.loads(raw)
         kind = msg["type"]
@@ -76,6 +78,20 @@ def ask(ws, text: str) -> dict:
         elif kind == "audio_end":
             m["audio_done"] = at()
             return m
+
+
+TARGET = 4.0  # seconds until the first real (content) sentence is heard
+
+
+def is_ack(text: str) -> bool:
+    """The model's opening "……はい。" / "えっと。" line — short, no real content."""
+    return len(re.sub(r"[…。、？！?!\s]", "", text)) <= 8
+
+
+def content_audio(r: dict) -> float | None:
+    """When the first content sentence's audio arrived (skipping an opening ack line)."""
+    seq = 1 if len(r["segments"]) > 1 and is_ack(r["segments"][0][1]) else 0
+    return r["audio_at"].get(seq)
 
 
 def stats(values: list[float | None]) -> str:
@@ -107,14 +123,19 @@ def main() -> None:
                 time.sleep(args.gap)
             r = ask(ws, q)
             results.append(r)
-            first = r["segments"][0][1] if r["segments"] else "—"
-            print(f"{r['first_audio'] or 0:5.1f}s first audio · {r['text_done'] or 0:5.1f}s text · {r['audio_done'] or 0:5.1f}s all · {q}  →  {first}")
+            first = " / ".join(t for _, t in r["segments"][:2]) or "—"
+            c = content_audio(r)
+            mark = "✅" if c is not None and c <= TARGET else "❌"
+            print(f"{mark} {c or 0:4.1f}s content voice · {r['first_audio'] or 0:4.1f}s first voice · {r['text_done'] or 0:4.1f}s text · {q}  →  {first}")
 
     ok = [r for r in results if not r["error"]]
     first_lines = [r["segments"][0][1] for r in ok if r["segments"]]
-    short_first = sum(len(t) <= 10 for t in first_lines)
+    short_first = sum(is_ack(t) for t in first_lines)
+    content = [content_audio(r) for r in ok]
+    passed = sum(c is not None and c <= TARGET for c in content)
     translated = sum(len(r["subs"]) for r in ok)
-    segs = sum(len(r["segments"]) for r in ok)
+    # the opening ack line has no translation by design, so don't count it
+    segs = sum(len(r["segments"]) - (1 if r["segments"] and is_ack(r["segments"][0][1]) else 0) for r in ok)
 
     lines = [
         f"# เวลาตอบของ Ciel ในแอปจริง — {datetime.now():%Y-%m-%d %H:%M}",
@@ -128,25 +149,28 @@ def main() -> None:
         "| ช่วง | ค่าเฉลี่ย |",
         "|---|---|",
         f"| ตัวอักษรแรกขึ้นจอ | {stats([r['first_text'] for r in ok])} |",
-        f"| ประโยคญี่ปุ่นแรกเสร็จ | {stats([r['first_line'] for r in ok])} |",
-        f"| **เสียงประโยคแรกมาถึง** | **{stats([r['first_audio'] for r in ok])}** |",
+        f"| เสียงบรรทัดแรก (มักเป็นคำรับคำ はい。) | {stats([r['first_audio'] for r in ok])} |",
+        f"| **เสียงประโยคเนื้อหาแรก** (เป้า ≤ {TARGET:.0f}s) | **{stats(content)}** |",
         f"| ข้อความครบ | {stats([r['text_done'] for r in ok])} |",
         f"| เสียงครบทุกประโยค | {stats([r['audio_done'] for r in ok])} |",
         "",
-        f"- บรรทัดแรกเป็นคำรับคำสั้น (≤ 10 ตัวอักษร): {short_first}/{len(first_lines)}",
-        f"- ประโยคที่มีคำแปล: {translated}/{segs} · เสียงสร้างไม่สำเร็จ: {sum(r['audio_errors'] for r in ok)}",
+        f"- **ผ่านเป้า ≤ {TARGET:.0f} วินาที: {passed}/{len(ok)} ข้อ**",
+        f"- บรรทัดแรกเป็นคำรับคำสั้น: {short_first}/{len(first_lines)}",
+        f"- ประโยคเนื้อหาที่มีคำแปล: {translated}/{segs} · เสียงสร้างไม่สำเร็จ: {sum(r['audio_errors'] for r in ok)}",
         "",
         "## รายข้อ",
         "",
-        "| คำถาม | เสียงแรก | ข้อความครบ | เสียงครบ | ประโยคแรก |",
-        "|---|---|---|---|---|",
+        "| คำถาม | เสียงเนื้อหาแรก | เสียงแรก | ข้อความครบ | เสียงครบ | สองบรรทัดแรก |",
+        "|---|---|---|---|---|---|",
     ]
     for r in results:
         if r["error"]:
             lines.append(f"| {r['q']} | ❌ {r['error']} | | | |")
             continue
-        first = r["segments"][0][1] if r["segments"] else "—"
-        lines.append(f"| {r['q']} | {r['first_audio'] or 0:.1f}s | {r['text_done'] or 0:.1f}s | {r['audio_done'] or 0:.1f}s | {first} |")
+        first = " / ".join(t for _, t in r["segments"][:2]) or "—"
+        c = content_audio(r)
+        mark = "✅" if c is not None and c <= TARGET else "❌"
+        lines.append(f"| {r['q']} | {mark} {c or 0:.1f}s | {r['first_audio'] or 0:.1f}s | {r['text_done'] or 0:.1f}s | {r['audio_done'] or 0:.1f}s | {first} |")
     lines += ["", "## คำตอบเต็ม", ""]
     for r in ok:
         lines += [f"**{r['q']}**", ""]
