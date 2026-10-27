@@ -237,7 +237,8 @@ async def reply_to(channel: Channel, persona, messages: list[dict], speak: bool)
         if sender:
             await audio_jobs.put(None)
             await sender
-    return raw.strip()
+    # unstripped: the next prompt must repeat this reply exactly as generated (prompt cache)
+    return raw
 
 
 # Served last so /api and /ws take priority

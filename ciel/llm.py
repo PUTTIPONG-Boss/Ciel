@@ -55,17 +55,36 @@ class ThinkFilter:
         return rest
 
 
+EMPTY_THINK = "<think>\n\n</think>\n\n"  # Qwen3's "no thinking" marker
+CHATML_STOP = ["<|im_end|>", "<|endoftext|>"]
+
+
+def render_chatml(messages: list[dict]) -> str:
+    """The Qwen3 (ChatML) prompt, rendered by us so each turn's prompt is the
+    previous prompt + reply + new message, byte for byte, and Ollama can reuse
+    its cache. Ollama's own qwen3 template adds " /no_think" only to the newest
+    user message and the empty think block only to the reply being generated,
+    so every new turn rewrote the previous one and the prompt was re-read from
+    there (docs/model-compare/2026-10-27-1538-latency.md)."""
+    out = []
+    for m in messages:
+        content = EMPTY_THINK + m["content"] if m["role"] == "assistant" else m["content"]
+        out.append(f"<|im_start|>{m['role']}\n{content}<|im_end|>\n")
+    return "".join(out) + "<|im_start|>assistant\n" + EMPTY_THINK
+
+
 class OllamaLLM:
     def __init__(self, s: Settings):
         self.s = s
         self.client = httpx.AsyncClient(base_url=s.ollama_url, timeout=httpx.Timeout(300, connect=5))
         self.no_think_param: set[str] = set()  # models whose template rejects "think"
+        # thinking needs Ollama's template; raw prompts always answer without it
+        self.raw = s.raw_prompt and not s.think
 
     def _payload(self, messages: list[dict], model: str, stream: bool, num_predict: int) -> dict:
         keep = self.s.keep_alive
         payload = {
             "model": model,
-            "messages": messages,
             "stream": stream,
             # keep the model in RAM: reloading it + re-reading the prompt costs ~35 s on an M1
             "keep_alive": int(keep) if keep.lstrip("-").isdigit() else keep,
@@ -75,19 +94,30 @@ class OllamaLLM:
                 "num_predict": num_predict,  # also stops a model that loops forever
             },
         }
+        if self.raw:
+            payload["prompt"] = render_chatml(messages)
+            payload["raw"] = True
+            payload["options"]["stop"] = CHATML_STOP
+            return payload
+        payload["messages"] = messages
         if model not in self.no_think_param:
             payload["think"] = self.s.think
         return payload
 
+    @property
+    def _endpoint(self) -> str:
+        return "/api/generate" if self.raw else "/api/chat"
+
     async def warmup(self, messages: list[dict]) -> None:
         """Load the model and put the persona prompt into Ollama's prompt cache
-        before the first real message (run at server start)."""
+        before the first real message (run at server start). Must be rendered
+        exactly like a real request, or the first message starts cold."""
         try:
-            r = await self.client.post("/api/chat", json=self._payload(messages, self.s.model, False, 1))
-            if r.status_code != 200 and "think" in r.text:
+            r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
+            if r.status_code != 200 and "think" in r.text and not self.raw:
                 self.no_think_param.add(self.s.model)
-                r = await self.client.post("/api/chat", json=self._payload(messages, self.s.model, False, 1))
-            log.info("warm-up done (%s, HTTP %s)", self.s.model, r.status_code)
+                r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
+            log.info("warm-up done (%s, %s, HTTP %s)", self.s.model, "raw" if self.raw else "chat", r.status_code)
         except httpx.HTTPError as e:
             log.warning("warm-up failed: %s", e)
 
@@ -96,7 +126,7 @@ class OllamaLLM:
         payload = self._payload(messages, model, True, self.s.num_predict)
         think = ThinkFilter()
         try:
-            async with self.client.stream("POST", "/api/chat", json=payload) as r:
+            async with self.client.stream("POST", self._endpoint, json=payload) as r:
                 if r.status_code != 200:
                     body = (await r.aread()).decode(errors="ignore")
                     # Fine-tunes (e.g. Shisa) may ship a chat template without thinking support
@@ -112,7 +142,8 @@ class OllamaLLM:
                     data = json.loads(line)
                     if "error" in data:
                         raise LLMError(data["error"])
-                    text = think.feed(data.get("message", {}).get("content", ""))
+                    chunk = data.get("response", "") if self.raw else data.get("message", {}).get("content", "")
+                    text = think.feed(chunk or "")
                     if text:
                         yield text
                     if data.get("done"):

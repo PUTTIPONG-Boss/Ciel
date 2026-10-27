@@ -31,6 +31,8 @@ class Settings:
     ollama_url: str = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
     model: str = os.getenv("CIEL_MODEL", "qwen3:8b")
     think: bool = _bool(os.getenv("CIEL_THINK", "false"))
+    # render the Qwen3 (ChatML) prompt ourselves and call /api/generate raw — keeps the prompt cache across turns
+    raw_prompt: bool = _bool(os.getenv("CIEL_RAW_PROMPT", "true"))
     temperature: float = float(os.getenv("CIEL_TEMPERATURE", "0.7"))
     num_ctx: int = int(os.getenv("CIEL_NUM_CTX", "8192"))
     keep_alive: str = os.getenv("CIEL_KEEP_ALIVE", "-1")  # -1 = keep the model loaded forever
