@@ -37,6 +37,18 @@ QUESTIONS = [
     "พรุ่งนี้มีสัมภาษณ์งาน ตื่นเต้นมาก",
     "What should I name my new cat?",
 ]
+# --turns > 8 continues with these: a long conversation is where history
+# trimming used to break the prompt cache (from turn 11 on, ~11 s each)
+MORE_QUESTIONS = [
+    "เมื่อกี้พูดถึงแมว ชื่อไหนดีที่สุด",
+    "ฝนตกอีกแล้ว ขี้เกียจออกไปข้างนอก",
+    "ช่วยเตือนให้ดื่มน้ำหน่อย",
+    "เธอชอบฤดูไหน",
+    "วันนี้ทำงานเสร็จเร็ว ดีใจ",
+    "เพลงที่ฟังตอนทำงานควรเป็นแบบไหน",
+    "Do you ever get bored?",
+    "ง่วงแล้ว ไปนอนก่อนนะ",
+]
 
 
 def login(base: str) -> str:
@@ -127,6 +139,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default=f"http://127.0.0.1:{settings.port}")
     ap.add_argument("--gap", type=float, default=65, help="seconds between messages")
+    ap.add_argument("--turns", type=int, default=len(QUESTIONS),
+                    help=f"messages in the conversation (max {len(QUESTIONS) + len(MORE_QUESTIONS)}); 14+ covers history trimming")
     ap.add_argument("--out", default=str(ROOT / "docs" / "model-compare" / f"{datetime.now():%Y-%m-%d-%H%M}-latency.md"))
     args = ap.parse_args()
 
@@ -140,7 +154,7 @@ def main() -> None:
             print("note: persona style is", hello.get("style"))
         ws.send(json.dumps({"type": "reset"}))
         ws.recv()
-        for i, q in enumerate(QUESTIONS):
+        for i, q in enumerate((QUESTIONS + MORE_QUESTIONS)[: args.turns]):
             if i:
                 time.sleep(args.gap)
             r = ask(ws, q)

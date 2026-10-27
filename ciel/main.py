@@ -32,6 +32,7 @@ MAX_INPUT_CHARS = 4000
 generating = 0  # replies in progress — the updater waits for this to hit 0
 warmed = None  # the persona whose prompt is in Ollama's cache
 warming: asyncio.Task | None = None
+background: set[asyncio.Task] = set()
 
 
 def warm_up(persona) -> None:
@@ -145,7 +146,6 @@ async def chat(ws: WebSocket):
                 continue
 
             history.append({"role": "user", "content": persona.stamp(text)})  # stamped once, see Persona.stamp
-            del history[: max(0, len(history) - settings.max_history)]
             speak = bool(msg.get("speak")) and tts.enabled()
 
             generating += 1
@@ -161,8 +161,35 @@ async def chat(ws: WebSocket):
 
             # keep the [tags] in history so Ciel keeps using them
             history.append({"role": "assistant", "content": reply})
+            if trim_history(persona, history):
+                # re-read the shortened history now, while the user reads/listens,
+                # instead of when their next message arrives
+                task = asyncio.create_task(llm.warmup(persona.build_messages(history)))
+                background.add(task)  # keep a reference until it finishes
+                task.add_done_callback(background.discard)
     except WebSocketDisconnect:
         pass
+
+
+def trim_history(persona, history: list[dict]) -> bool:
+    """Drop old turns in one big chunk, not two messages per turn: every
+    trim changes the start of the history, so Ollama has to re-read all of it
+    (~11 s for 20 messages on an M1). Trimming to half at once means that
+    happens once every ~5 turns, and the caller pre-reads it in the background.
+    Also trims when the prompt would get close to num_ctx (long replies)."""
+
+    def too_big() -> bool:
+        # ~0.5 tokens per character for this Thai/Japanese mix (measured), plus headroom
+        chars = sum(len(m["content"]) for m in persona.build_messages(history))
+        return chars * 0.55 > settings.num_ctx - settings.num_predict - 500
+
+    if len(history) <= settings.max_history and not too_big():
+        return False
+    del history[: len(history) - settings.max_history // 2]
+    while history and (history[0]["role"] != "user" or too_big()):
+        del history[0]
+    log.info("history trimmed to %d messages", len(history))
+    return True
 
 
 class Channel:
