@@ -38,7 +38,7 @@ class Persona:
     voice: dict = field(default_factory=dict)  # raw voice: section, see tts.py
     style: str = "native"  # "anime" = always speak Japanese, show a translation
     greeting_ja: str = ""
-    few_shot: bool = True  # put the examples into the prompt (see Settings.few_shot)
+    tuned: bool = False  # the model is fine-tuned on training/ (see Settings.tuned)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Persona":
@@ -63,6 +63,8 @@ class Persona:
         )
 
     def system_prompt(self) -> str:
+        if self.tuned:
+            return self.tuned_prompt()
         s = self.speech
         lines = [f"คุณคือ {self.name}", "", "# ตัวตน", self.identity.strip(), "", "# บุคลิก"]
         lines += [f"- {p}" for p in self.personality]
@@ -108,10 +110,30 @@ class Persona:
             "# ข้อมูลตอนนี้",
             f"- ข้อความของ{self.user_name}ขึ้นต้นด้วยวันเวลาตอนที่ส่ง เช่น [2026-10-27 Tue 15:10] ใช้เป็นข้อมูลเท่านั้น ไม่ต้องพูดถึงถ้าไม่ได้ถูกถาม และไม่ใช่ภาษาที่{self.user_name}ใช้",
         ]
-        if self.style == "anime" and self.few_shot:
+        if self.style == "anime":
             # the examples sit in the chat as earlier turns; asked "what were we just
             # talking about?" the model answered from them (2026-10-28-0141-latency.md)
             lines.append(f"- ข้อความที่ลงเวลา {EXAMPLE_TIME:%Y-%m-%d %a %H:%M} เป็นตัวอย่างเท่านั้น ไม่ใช่บทสนทนาจริง ถ้าถูกถามว่าคุยอะไรกันไป ให้ดูเฉพาะข้อความหลังจากนั้น")
+        return "\n".join(lines)
+
+    def tuned_prompt(self) -> str:
+        """The short system prompt of a model fine-tuned on training/ — it is
+        trained with exactly this, so the rules and examples it learned don't
+        have to be in every prompt (~3,100 tokens + ~3,400 of examples). With
+        the full prompt every training sample was ~3,300 tokens and one
+        iteration took ~4 min on the M1 (2026-10-29-finetune-trial.md).
+        Identity and personality stay, so persona edits still take effect."""
+        tags = " ".join(f"[{t}]" for t in self.emotions)
+        lines = [f"คุณคือ {self.name}", self.identity.strip(), ""]
+        lines += [f"- {p}" for p in self.personality]
+        lines += [
+            "",
+            "# รูปแบบคำตอบ",
+            f"- พูดภาษาญี่ปุ่นเสมอ 1-3 บรรทัด บรรทัดละ 1 ประโยค บรรทัดแรกสั้นมากและขึ้นต้นด้วยแท็กอารมณ์ ({tags})",
+            '- จากนั้นคำแปลบรรทัดละ 1 ขึ้นต้นด้วย ">> n" แปลตรงกับประโยคญี่ปุ่นบรรทัด n ภาษาตาม sub: ในวงเล็บเวลา',
+            f"- เรียก{self.user_name}ว่า マスター แทนตัวเองว่า 私 · คำแปลใช้ \"{self.user_name}\" และ \"{self.speech.get('self', 'ฉัน')}\"",
+            "- จำได้เฉพาะในแชทนี้ ห้ามอ้างว่าทำสิ่งที่ทำไม่ได้ · วันเวลาหน้าข้อความเป็นข้อมูล ไม่ต้องพูดถึงถ้าไม่ถูกถาม",
+        ]
         return "\n".join(lines)
 
     def stamp(self, text: str, now: datetime | None = None) -> str:
@@ -136,7 +158,7 @@ class Persona:
         message is byte-identical to last time and comes from the prompt cache
         (~3,000 tokens would otherwise take ~10 s to re-read on an M1)."""
         messages = [{"role": "system", "content": self.system_prompt()}]
-        for ex in self.examples if self.few_shot else []:
+        for ex in [] if self.tuned else self.examples:
             # stamped like real messages (fixed time: the prompt must not change) so
             # the examples show which "sub:" goes with which subtitle language
             user = self.stamp(ex["user"], EXAMPLE_TIME) if self.style == "anime" else ex["user"]
@@ -148,9 +170,9 @@ class Persona:
 class PersonaStore:
     """Caches the persona and reloads it when the YAML file changes."""
 
-    def __init__(self, path: Path, few_shot: bool = True):
+    def __init__(self, path: Path, tuned: bool = False):
         self.path = path
-        self.few_shot = few_shot
+        self.tuned = tuned
         self._mtime = 0.0
         self._persona: Persona | None = None
 
@@ -159,6 +181,6 @@ class PersonaStore:
         if self._persona is None or mtime != self._mtime:
             data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
             self._persona = Persona.from_dict(data)
-            self._persona.few_shot = self.few_shot
+            self._persona.tuned = self.tuned
             self._mtime = mtime
         return self._persona

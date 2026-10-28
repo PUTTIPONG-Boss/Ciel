@@ -38,7 +38,7 @@ ollama pull qwen3:8b
 ```
 
 ครั้งแรกจะสร้าง `.venv`, ติดตั้ง dependency และคัดลอก `.env.example` เป็น `.env` ให้อัตโนมัติ
-จากนั้นเปิด <http://localhost:8080>
+จากนั้นเปิด <http://localhost:47080>
 
 > ยังไม่มี Ollama? ตั้ง `CIEL_LLM=mock` ใน `.env` เพื่อลองหน้า UI ได้ก่อน
 
@@ -55,7 +55,7 @@ ollama pull qwen3:8b
 1. ติดตั้ง [Tailscale](https://tailscale.com) บนเครื่องที่รัน Ciel และบนมือถือ ล็อกอินบัญชีเดียวกัน
 2. บนเครื่องที่รัน Ciel:
    ```bash
-   tailscale serve --bg 8080
+   tailscale serve --bg 47080
    ```
 3. เปิด `https://<ชื่อเครื่อง>.<tailnet>.ts.net` จากมือถือ แล้วกด **เพิ่มลงหน้าจอหลัก** จะได้ Ciel เป็นแอป
 

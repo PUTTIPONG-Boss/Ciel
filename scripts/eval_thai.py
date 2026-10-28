@@ -3,11 +3,11 @@ training/eval.yaml (not in the training data) on one or more models and
 writes them side by side, so a fine-tuned model can be compared with the
 one Ciel runs now.
 
-    .venv/bin/python scripts/eval_thai.py qwen3:8b ciel-qwen3@plain
+    .venv/bin/python scripts/eval_thai.py qwen3:8b ciel-qwen3@tuned
 
 MODEL uses the prompt the app uses today (system prompt + the persona's
-examples); MODEL@plain leaves the examples out, the way a model fine-tuned
-on training/ runs (CIEL_FEW_SHOT=false). Talks to Ollama directly, not to
+examples); MODEL@tuned uses the short prompt a model fine-tuned on
+training/ runs with (CIEL_TUNED=true). Talks to Ollama directly, not to
 the app: run it while nobody is chatting (models swap in and out of RAM).
 """
 
@@ -45,7 +45,7 @@ async def run(spec: str, scenarios: list[dict]) -> list[list[tuple[str, float]]]
     model, _, mode = spec.partition("@")
     # don't keep an extra model pinned in RAM next to the one the app uses
     llm = OllamaLLM(dataclasses.replace(settings, model=model, keep_alive="5m"))
-    persona = PersonaStore(settings.persona_path, few_shot=mode != "plain").get()
+    persona = PersonaStore(settings.persona_path, tuned=mode == "tuned").get()
     now = datetime.now().replace(second=0, microsecond=0)
     results = []
     for sc in scenarios:
@@ -66,7 +66,7 @@ async def run(spec: str, scenarios: list[dict]) -> list[list[tuple[str, float]]]
 
 def report(specs: list[str], scenarios: list[dict], results: dict) -> str:
     out = [f"# ทดสอบความเข้าใจภาษาไทยหลายรอบ — {datetime.now():%Y-%m-%d %H:%M}", ""]
-    out.append("โมเดล: " + " · ".join(f"`{s}`" for s in specs) + "  (`@plain` = ไม่มีตัวอย่างใน prompt)")
+    out.append("โมเดล: " + " · ".join(f"`{s}`" for s in specs) + "  (`@tuned` = prompt สั้นแบบโมเดลที่เทรนแล้ว ไม่มีตัวอย่าง)")
     out.append("")
     for i, sc in enumerate(scenarios):
         out += [f"## {i + 1}. {sc['name']}", "", f"ควรเป็น: {sc.get('check', '—')}", ""]
@@ -86,7 +86,7 @@ def report(specs: list[str], scenarios: list[dict], results: dict) -> str:
 
 async def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("models", nargs="+", help="MODEL or MODEL@plain")
+    ap.add_argument("models", nargs="+", help="MODEL or MODEL@tuned")
     ap.add_argument("--out", type=Path, help="report path (default docs/model-compare/<date>-thai-eval.md)")
     args = ap.parse_args()
     scenarios = yaml.safe_load(SCENARIOS.read_text(encoding="utf-8"))

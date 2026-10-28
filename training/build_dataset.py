@@ -2,8 +2,9 @@
 examples) in mlx-lm's chat format, after checking every reply against the
 same parser the app uses (speech.AnimeStream).
 
-Every sample is exactly what the app sends: the system prompt WITHOUT the
-examples (a fine-tuned model runs with CIEL_FEW_SHOT=false), user messages
+Every sample is exactly what the app sends a fine-tuned model
+(CIEL_TUNED=true): the short system prompt (Persona.tuned_prompt, no
+examples — the full one made every sample ~3,300 tokens), user messages
 stamped "[YYYY-MM-DD Day HH:MM · sub: Thai]", and the history so far. Each
 reply of a dialog becomes one sample (earlier turns are context, only the
 last reply is trained: mlx-lm --mask-prompt).
@@ -110,7 +111,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
 
-    persona = PersonaStore(ROOT / "persona" / "ciel.yaml", few_shot=False).get()
+    persona = PersonaStore(ROOT / "persona" / "ciel.yaml", tuned=True).get()
     if persona.style != "anime":
         sys.exit("persona style must be 'anime' (the training data is in that layout)")
     system = persona.system_prompt()

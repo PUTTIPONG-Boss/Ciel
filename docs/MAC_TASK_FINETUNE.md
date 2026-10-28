@@ -1,4 +1,4 @@
-# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.16)
+# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.17)
 
 > **วิธีใช้:** เปิด Claude Code บน Mac แล้วพิมพ์
 > `cd ~/Ciel && git pull แล้วทำตาม docs/MAC_TASK_FINETUNE.md`
@@ -14,7 +14,16 @@
 - ข้อมูลเทรน `training/dialogs/*.yaml`: บทสนทนาหลายรอบ 60 ชุด + ตัวอย่างจาก persona 29 ชุด รวม 166 คำตอบ
 - `training/build_dataset.py`: ตรวจและสร้างไฟล์เทรน
 - `scripts/eval_thai.py` + `training/eval.yaml`: ใช้ทดสอบเทียบโมเดล
-- `CIEL_FEW_SHOT`: ใช้ปิดตัวอย่างใน prompt สำหรับโมเดลที่เทรนแล้ว
+- `CIEL_TUNED`: ให้โมเดลที่เทรนแล้วใช้ system prompt สั้นแบบเดียวกับตอนเทรน และไม่มีตัวอย่างใน prompt
+
+### รอบที่ 2 (v0.3.17) ต่อจาก `2026-10-29-finetune-trial.md`
+
+- **รอบลองแรก:** 20 iteration ใช้ 2 ชม. 11 นาที (~4 นาที/iteration) peak 11.8 GB และใช้ swap เพราะทุกตัวอย่างยาว ~3,300 token (system prompt เต็ม ~3,100)
+- **ตอนนี้ข้อมูลเทรนใช้ system prompt สั้น** (`Persona.tuned_prompt` ~630 token) ตัวอย่างยาวสุด ~920 token (สั้นลง 3.6 เท่า) จึงลด `--max-seq-length` เหลือ 1024
+- **การประเมิน (val):** ใช้ `--val-batches 10` และประเมินทุก 100 iteration (เดิมประเมินทั้งชุดทุกครั้ง ~25 นาที)
+- **ใช้ venv เดิมได้:** `~/ciel-train` (Python 3.12 ผ่าน uv) ข้ามขั้นที่ 2 ถ้ายังอยู่
+- **adapter ของรอบลองแรก (`training/adapters-trial/`)** เทรนกับ prompt เต็ม ใช้กับ prompt สั้นไม่ได้ ลบได้
+- **รัน `--iters 20` ก่อนเสมอ** แล้วรายงานเวลาต่อ iteration และ peak mem ถ้ารอบจริงคาดว่าเกิน ~5 ชั่วโมง ให้ถามมาสเตอร์ก่อน (ทางเลือก: `--num-layers 8` หรือลด iteration)
 
 งานนี้คือเทรน LoRA ด้วย **MLX** แล้วนำเข้า Ollama เป็นโมเดลใหม่ชื่อ `ciel-qwen3` จากนั้นทดสอบเทียบกับ `qwen3:8b`
 
@@ -33,7 +42,7 @@
    - `mlx-community/Qwen3-8B-4bit` จาก Hugging Face (~4.6 GB)
    - อาจต้องใช้ `llama.cpp` (git clone ~100 MB) ถ้า Ollama นำเข้าเองไม่ได้
 2. **พื้นที่ดิสก์:** ต้องว่าง **≥ 30 GB** (โมเดลที่รวม LoRA แล้วแบบเต็ม ~16 GB + GGUF ~16 GB ชั่วคราว) เช็กด้วย `df -h ~`
-3. **Ciel จะออฟไลน์ระหว่างเทรน** (คาดว่า 2–4 ชั่วโมง) เพราะ RAM 16 GB ไม่พอรันทั้ง Ollama และการเทรน แนะนำให้เทรนตอนกลางคืน
+3. **Ciel จะออฟไลน์ระหว่างเทรน** (รอบแรกใช้ ~4 นาที/iteration รอบนี้ตัวอย่างสั้นลง 3.6 เท่า คาดว่า ≤ 1 นาที/iteration → 450 iteration ≈ 4–7 ชั่วโมง ยืนยันจากรอบลอง 20 iteration) เพราะ RAM 16 GB ไม่พอรันทั้ง Ollama และการเทรน แนะนำให้เทรนตอนกลางคืน
 
 ## ขั้นที่ 1: สร้างข้อมูล
 
@@ -42,7 +51,7 @@ cd ~/Ciel && git pull --ff-only
 .venv/bin/python training/build_dataset.py
 ```
 
-ต้องได้ `0 problems` และ `train: 145 samples` / `valid: 21 samples` (หรือใกล้เคียง)
+ต้องได้ `0 problems` และ `train: 145 samples, longest ~919 tokens` / `valid: 21 samples` (หรือใกล้เคียง) ถ้า longest ยัง ~3,300 แปลว่ายังไม่ได้ pull v0.3.17
 
 ## ขั้นที่ 2: ติดตั้ง (venv แยก ไม่ปนกับของแอป)
 
@@ -69,8 +78,9 @@ ollama ps                                       # ต้องว่าง
 cd ~/Ciel && ~/ciel-train/bin/python -m mlx_lm.lora \
   --model mlx-community/Qwen3-8B-4bit --train --data training/data \
   --adapter-path training/adapters --mask-prompt --grad-checkpoint \
-  --batch-size 1 --num-layers 16 --max-seq-length 4096 \
-  --learning-rate 1e-5 --iters 20 --steps-per-report 5 --steps-per-eval 20
+  --batch-size 1 --num-layers 16 --max-seq-length 1024 \
+  --learning-rate 1e-5 --iters 20 --steps-per-report 5 \
+  --steps-per-eval 20 --val-batches 10
 ```
 
 - จดเวลาต่อ iteration และ `Peak mem`
@@ -83,12 +93,12 @@ cd ~/Ciel && ~/ciel-train/bin/python -m mlx_lm.lora \
 cd ~/Ciel && nohup ~/ciel-train/bin/python -m mlx_lm.lora \
   --model mlx-community/Qwen3-8B-4bit --train --data training/data \
   --adapter-path training/adapters --mask-prompt --grad-checkpoint \
-  --batch-size 1 --num-layers 16 --max-seq-length 4096 \
+  --batch-size 1 --num-layers 16 --max-seq-length 1024 \
   --learning-rate 1e-5 --iters 450 --steps-per-report 10 \
-  --steps-per-eval 50 --save-every 50 > training/train.log 2>&1 &
+  --steps-per-eval 100 --val-batches 10 --save-every 50 > training/train.log 2>&1 &
 ```
 
-- ดู `Val loss` ทุก 50 iteration ใน `training/train.log`
+- ดู `Val loss` ทุก 100 iteration ใน `training/train.log`
 - ถ้า val loss เริ่มขึ้นหลังจุดต่ำสุด (overfit) ให้ใช้ checkpoint ที่ val loss ต่ำสุด โดย copy `training/adapters/00000NNN_adapters.safetensors` ไปทับ `training/adapters/adapters.safetensors`
 - จด train/val loss ทุกจุดไว้ใส่รายงาน
 
@@ -130,12 +140,11 @@ curl -s http://127.0.0.1:47080/api/health; echo    # ต้องตอบ แ�
 **ทดสอบเทียบ** ทำตอนไม่มีใครคุย เพราะโมเดลจะสลับเข้าออก RAM ใช้เวลาประมาณ 10–15 นาที:
 
 ```bash
-cd ~/Ciel && .venv/bin/python scripts/eval_thai.py qwen3:8b ciel-qwen3@plain ciel-qwen3
+cd ~/Ciel && .venv/bin/python scripts/eval_thai.py qwen3:8b ciel-qwen3@tuned
 ```
 
-- `qwen3:8b` = แบบที่ใช้อยู่ตอนนี้ (มีตัวอย่างใน prompt)
-- `ciel-qwen3@plain` = โมเดลเทรนแล้ว ไม่มีตัวอย่าง (แบบที่ตั้งใจจะใช้)
-- `ciel-qwen3` = โมเดลเทรนแล้ว + ตัวอย่าง (ไว้ดูว่าตัวอย่างยังช่วยไหม)
+- `qwen3:8b` = แบบที่ใช้อยู่ตอนนี้ (prompt เต็ม + ตัวอย่าง)
+- `ciel-qwen3@tuned` = โมเดลเทรนแล้ว + prompt สั้นแบบที่เทรนมา (แบบที่ตั้งใจจะใช้)
 
 หลังทดสอบ โหลด qwen3:8b กลับเข้า RAM ด้วยการเปิดหน้าเว็บ Ciel หนึ่งครั้ง หรือรอ keep-warm (≤ 5 นาที)
 
@@ -172,9 +181,9 @@ cd ~/Ciel && git add docs/ && git commit -m "Fine-tune: ciel-qwen3 vs qwen3:8b T
 
 ```
 CIEL_MODEL=ciel-qwen3
-CIEL_FEW_SHOT=false
+CIEL_TUNED=true
 ```
 
 แล้วรีสตาร์ท `launchctl kickstart -k gui/$UID/com.ciel.server` จากนั้นวัด `scripts/measure_latency.py --turns 16` ตาม `docs/MAC_TASK_LATENCY.md`
 
-prompt สั้นลงครึ่งหนึ่ง จึงคาดว่า prefill ตอน cache หลุดจะเร็วขึ้น และตัดประวัติน้อยลง
+prompt สั้นลงจาก ~6,600 เหลือ ~630 token จึงคาดว่า prefill ตอน cache หลุดจะเร็วขึ้นมาก และตัดประวัติน้อยลง
