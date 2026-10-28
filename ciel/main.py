@@ -68,9 +68,10 @@ async def keep_warm() -> None:
     the conversation out of the cache.
 
     One round took ~5.3 s of GPU time with the start-up probe (2 × 16
-    tokens, 2026-10-28-0141-latency.md), so it uses a 2-token probe, and a
-    message that arrives meanwhile cancels it (Ollama stops a request whose
-    connection closes) instead of waiting behind it."""
+    tokens, 2026-10-28-0141-latency.md), so it runs once instead of twice. A
+    2-token probe (~1 s) was too light: 20 min idle still gave a 2.5 s prefill
+    (0244-latency.md). A message that arrives meanwhile cancels the probe
+    (Ollama stops a request whose connection closes) instead of waiting behind it."""
     global last_active, probing
     started = time.monotonic()
     while True:
@@ -80,7 +81,7 @@ async def keep_warm() -> None:
         if generating or now - last_active < interval:
             continue
         last_active = now
-        probing = asyncio.create_task(llm.warmup(*_warmup_messages(personas.get(), last_prompt), probe_tokens=2, probe_runs=1))
+        probing = asyncio.create_task(llm.warmup(*_warmup_messages(personas.get(), last_prompt), probe_tokens=16, probe_runs=1))
         await asyncio.wait({probing})  # doesn't raise when a message cancels it
         probing = None
 

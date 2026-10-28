@@ -118,8 +118,8 @@ class OllamaLLM:
         such request after a start is ~4x slower on the M1's GPU (2.2 s instead
         of 0.65 s, docs/model-compare/2026-10-27-1907-latency.md). One
         non-streamed 4-token probe wasn't enough (2141-latency.md), so it now
-        goes through stream() exactly like a reply, twice. keep_warm uses a
-        lighter probe (1 run, 2 tokens): the GPU is only cooling, not cold."""
+        goes through stream() exactly like a reply, twice. keep_warm runs it
+        once: the GPU is only cooling there, not cold (but 2 tokens weren't enough)."""
         try:
             r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
             if r.status_code != 200 and "think" in r.text and not self.raw:
