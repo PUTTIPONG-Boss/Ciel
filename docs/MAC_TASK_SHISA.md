@@ -23,7 +23,7 @@
 
 ```bash
 cd ~/Ciel && git pull --ff-only && cat VERSION      # ต้องเป็น 0.3.0 ขึ้นไป
-curl -s http://127.0.0.1:8080/api/health; echo
+curl -s http://127.0.0.1:47080/api/health; echo
 ```
 
 ถ้า `/api/health` ยังไม่เป็น 0.3.0 ให้รอประมาณ 1 นาที (ระบบอัปเดตอัตโนมัติจะดึงเอง) หรือรีสตาร์ทด้วย `launchctl kickstart -k gui/$(id -u)/com.ciel.server`
@@ -80,7 +80,7 @@ cd ~/Ciel && git add docs/model-compare/ && git commit -m "Model comparison: qwe
   cd ~/Ciel
   sed -i '' 's|^CIEL_MODEL=.*|CIEL_MODEL=hf.co/dahara1/shisa-v2.1-qwen3-8b-UD-japanese-imatrix:Q4_K_M|' .env
   launchctl kickstart -k gui/$(id -u)/com.ciel.server
-  curl -s http://127.0.0.1:8080/api/health; echo
+  curl -s http://127.0.0.1:47080/api/health; echo
   ```
 
   ถ้าภายหลังอยากเปลี่ยนกลับ ให้ตั้ง `CIEL_MODEL=qwen3:8b` แล้วรีสตาร์ทแบบเดียวกัน

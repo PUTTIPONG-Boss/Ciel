@@ -68,10 +68,10 @@ grep -E '^CIEL_(LLM|MODEL|HOST|AUTO_UPDATE)=' .env
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.ciel.server
 sleep 3
-curl -s http://127.0.0.1:8080/api/health; echo
+curl -s http://127.0.0.1:47080/api/health; echo
 git -C ~/Ciel rev-parse --short HEAD
 grep -E 'updater|auto-update' ~/Library/Logs/Ciel.log | tail -3
-curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:8080/fonts/Monocraft.otf
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:47080/fonts/Monocraft.otf
 ```
 
 **ตรวจสอบ:**

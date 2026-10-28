@@ -124,7 +124,7 @@ cd ~/Ciel/training && git clone --depth 1 https://github.com/ggml-org/llama.cpp
 
 ```bash
 launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ciel.server.plist
-curl -s http://127.0.0.1:8080/api/health; echo    # ต้องตอบ และยังเป็น qwen3:8b
+curl -s http://127.0.0.1:47080/api/health; echo    # ต้องตอบ และยังเป็น qwen3:8b
 ```
 
 **ทดสอบเทียบ** ทำตอนไม่มีใครคุย เพราะโมเดลจะสลับเข้าออก RAM ใช้เวลาประมาณ 10–15 นาที:

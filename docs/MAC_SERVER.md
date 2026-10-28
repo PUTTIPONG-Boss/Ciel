@@ -12,7 +12,7 @@
 | เวลาตอบ | ข้อความแรกหลังโหลดโมเดล ~24 วินาที, ข้อความถัดไป ~9 วินาที |
 | Python | 3.12 (venv ที่ `~/Ciel/.venv`) |
 | เวอร์ชัน | v0.1.2 (b4ec856) อัปเดตอัตโนมัติ: เปิด |
-| บนเครื่อง Mac | http://localhost:8080 |
+| บนเครื่อง Mac | http://localhost:47080 |
 | จากมือถือ/เครื่องอื่น | https://boss-puttipong.tail6857ad.ts.net (ใช้ได้เฉพาะเครื่องที่ล็อกอิน Tailscale บัญชีเดียวกัน) |
 
 **ขั้นที่เสร็จแล้ว:** 1–8 (เครื่องมือ, Ollama, Ciel, `.env`, ทดสอบแชท, LaunchAgent, Tailscale Serve) และ MAC_UPDATE ขั้นที่ 1–4
@@ -31,7 +31,7 @@ CIEL_LLM=ollama
 CIEL_MODEL=qwen3:8b
 CIEL_THINK=false
 CIEL_HOST=127.0.0.1
-CIEL_PORT=8080
+CIEL_PORT=47080
 CIEL_PASSWORD=<ตั้งไว้แล้ว ไม่เก็บใน repo>
 ```
 
@@ -73,7 +73,7 @@ launchctl kickstart -k gui/$(id -u)/com.ciel.server
 
 **ตรวจสอบ:**
 
-- `curl -s http://127.0.0.1:8080/api/health` ต้องมี `"version": "0.1.0"` และ `"commit"` ตรงกับ `git rev-parse --short HEAD`
+- `curl -s http://127.0.0.1:47080/api/health` ต้องมี `"version": "0.1.0"` และ `"commit"` ตรงกับ `git rev-parse --short HEAD`
 - `grep updater ~/Library/Logs/Ciel.log | tail -3` ต้องเห็น `auto-update on: checking origin/main every 60s`
 - ห้ามแก้ไฟล์ใน `~/Ciel` ที่ git ติดตามอยู่ และห้าม commit บน Mac (ยกเว้นไฟล์ docs ที่ push ขึ้นไปทันที) เพราะระบบจะข้ามการอัปเดตถ้ามีการแก้ไฟล์ในเครื่องที่ยังไม่ได้ push
 

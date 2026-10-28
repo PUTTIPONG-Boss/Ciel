@@ -106,7 +106,7 @@ v0.3.1 นำข้อเสนอจาก `docs/model-compare/2026-10-27-speed
 
 ```bash
 cd ~/Ciel && git pull --ff-only
-curl -s http://127.0.0.1:8080/api/health; echo     # ต้องเป็น 0.3.15 ขึ้นไป
+curl -s http://127.0.0.1:47080/api/health; echo     # ต้องเป็น 0.3.15 ขึ้นไป
 grep -E "warm-up" ~/Library/Logs/Ciel.log | tail -2  # ต้องเห็น "warm-up done (…, raw, HTTP 200)"
 ollama ps                                           # ต้องเห็น qwen3:8b และ UNTIL = Forever
 ```

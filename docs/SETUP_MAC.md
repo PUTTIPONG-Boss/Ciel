@@ -120,18 +120,18 @@ cd ~/Ciel && .venv/bin/python -m ciel
 รันแบบ background แล้วทดสอบดังนี้
 
 ```bash
-curl -s http://127.0.0.1:8080/api/health
+curl -s http://127.0.0.1:47080/api/health
 ```
 
 ต้องได้ `"ok": true` และชื่อโมเดลถูกต้อง
 
-จากนั้นทดสอบแชทจริงผ่าน WebSocket ถ้าตั้งรหัสผ่านไว้ ให้ปิดรหัสชั่วคราวก่อน หรือให้ผู้ใช้ทดสอบเองผ่านเบราว์เซอร์ที่ http://localhost:8080
+จากนั้นทดสอบแชทจริงผ่าน WebSocket ถ้าตั้งรหัสผ่านไว้ ให้ปิดรหัสชั่วคราวก่อน หรือให้ผู้ใช้ทดสอบเองผ่านเบราว์เซอร์ที่ http://localhost:47080
 
 ```bash
 cd ~/Ciel && .venv/bin/python - <<'EOF'
 import json
 from websockets.sync.client import connect
-with connect("ws://127.0.0.1:8080/ws") as ws:
+with connect("ws://127.0.0.1:47080/ws") as ws:
     print("hello:", json.loads(ws.recv()))
     ws.send(json.dumps({"type": "chat", "text": "เธอเป็นใคร"}))
     while True:
@@ -184,7 +184,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ciel.server.plist
 
 ```bash
 launchctl print gui/$(id -u)/com.ciel.server | grep -E 'state|pid'
-curl -s http://127.0.0.1:8080/api/health
+curl -s http://127.0.0.1:47080/api/health
 tail -20 ~/Library/Logs/Ciel.log
 ```
 
@@ -219,11 +219,11 @@ open -a Tailscale
 # CLI ของแอป Tailscale บน Mac
 TS=/Applications/Tailscale.app/Contents/MacOS/Tailscale
 $TS status
-$TS serve --bg 8080
+$TS serve --bg 47080
 $TS serve status
 ```
 
-**ตรวจสอบ:** `serve status` ต้องแสดง URL แบบ `https://<ชื่อเครื่อง>.<tailnet>.ts.net` ที่ชี้ไปยัง `http://127.0.0.1:8080`
+**ตรวจสอบ:** `serve status` ต้องแสดง URL แบบ `https://<ชื่อเครื่อง>.<tailnet>.ts.net` ที่ชี้ไปยัง `http://127.0.0.1:47080`
 ให้ผู้ใช้เปิด URL นั้นบนมือถือ (ต้องเปิด Tailscale บนมือถือไว้) แล้ว:
 
 - ล็อกอินด้วยรหัสผ่านที่ตั้งไว้
@@ -248,7 +248,7 @@ $TS serve status
 เมื่อเสร็จทุกขั้น ให้สรุปให้ผู้ใช้เป็นภาษาไทย:
 
 - ชิป, RAM และโมเดลที่เลือก พร้อมเวลาตอบโดยประมาณจากขั้นที่ 6
-- URL สำหรับคุยกับ Ciel: บนเครื่องนี้ (`http://localhost:8080`) และจากที่อื่น (`https://….ts.net`)
+- URL สำหรับคุยกับ Ciel: บนเครื่องนี้ (`http://localhost:47080`) และจากที่อื่น (`https://….ts.net`)
 - ขั้นไหนผ่านแล้ว ขั้นไหนยังรอผู้ใช้ทำ
 - คำสั่งรีสตาร์ท Ciel, ตำแหน่งไฟล์ log (`~/Library/Logs/Ciel.log`) และวิธีอัปเดต:
   ```bash
