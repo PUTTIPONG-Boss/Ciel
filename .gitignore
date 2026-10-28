@@ -8,3 +8,9 @@ data/
 # Live2D models usually have their own license — keep them out of the repo by default
 web/live2d/models/*
 !web/live2d/models/.gitkeep
+
+# fine-tuning outputs (training/README.md) — big, rebuilt on the Mac
+training/adapters/
+training/fused/
+training/*.gguf
+training/llama.cpp/

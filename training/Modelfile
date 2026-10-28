@@ -1,0 +1,9 @@
+# Ciel's fine-tuned model for Ollama: Qwen3-8B + the LoRA from training/ (fused).
+#   ollama create ciel-qwen3 --quantize q4_K_M -f training/Modelfile
+# The app renders the ChatML prompt itself (raw /api/generate), so no TEMPLATE is
+# needed; for CIEL_RAW_PROMPT=false, copy TEMPLATE from `ollama show qwen3:8b --modelfile`.
+# If Ollama can't import the safetensors, convert with llama.cpp and point FROM at
+# the .gguf instead (docs/MAC_TASK_FINETUNE.md, step 6).
+FROM ./fused
+PARAMETER stop <|im_end|>
+PARAMETER stop <|endoftext|>

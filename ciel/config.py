@@ -38,6 +38,9 @@ class Settings:
     keep_alive: str = os.getenv("CIEL_KEEP_ALIVE", "-1")  # -1 = keep the model loaded forever
     num_predict: int = int(os.getenv("CIEL_NUM_PREDICT", "150"))
     max_history: int = int(os.getenv("CIEL_MAX_HISTORY", "20"))
+    # the persona's example chats in every prompt; a model fine-tuned on training/ has
+    # learned them already (and was trained without them), so turn this off for it
+    few_shot: bool = _bool(os.getenv("CIEL_FEW_SHOT", "true"))
     persona_path: Path = ROOT / os.getenv("CIEL_PERSONA", "persona/ciel.yaml")
     host: str = os.getenv("CIEL_HOST", "127.0.0.1")
     port: int = int(os.getenv("CIEL_PORT", "8080"))

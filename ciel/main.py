@@ -26,7 +26,7 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("font/otf", ".otf")
 
 llm = create_llm(settings)
-personas = PersonaStore(settings.persona_path)
+personas = PersonaStore(settings.persona_path, settings.few_shot)
 
 MAX_INPUT_CHARS = 4000
 generating = 0  # replies in progress — the updater waits for this to hit 0

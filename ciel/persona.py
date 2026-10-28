@@ -38,6 +38,7 @@ class Persona:
     voice: dict = field(default_factory=dict)  # raw voice: section, see tts.py
     style: str = "native"  # "anime" = always speak Japanese, show a translation
     greeting_ja: str = ""
+    few_shot: bool = True  # put the examples into the prompt (see Settings.few_shot)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Persona":
@@ -107,7 +108,7 @@ class Persona:
             "# ข้อมูลตอนนี้",
             f"- ข้อความของ{self.user_name}ขึ้นต้นด้วยวันเวลาตอนที่ส่ง เช่น [2026-10-27 Tue 15:10] ใช้เป็นข้อมูลเท่านั้น ไม่ต้องพูดถึงถ้าไม่ได้ถูกถาม และไม่ใช่ภาษาที่{self.user_name}ใช้",
         ]
-        if self.style == "anime":
+        if self.style == "anime" and self.few_shot:
             # the examples sit in the chat as earlier turns; asked "what were we just
             # talking about?" the model answered from them (2026-10-28-0141-latency.md)
             lines.append(f"- ข้อความที่ลงเวลา {EXAMPLE_TIME:%Y-%m-%d %a %H:%M} เป็นตัวอย่างเท่านั้น ไม่ใช่บทสนทนาจริง ถ้าถูกถามว่าคุยอะไรกันไป ให้ดูเฉพาะข้อความหลังจากนั้น")
@@ -135,7 +136,7 @@ class Persona:
         message is byte-identical to last time and comes from the prompt cache
         (~3,000 tokens would otherwise take ~10 s to re-read on an M1)."""
         messages = [{"role": "system", "content": self.system_prompt()}]
-        for ex in self.examples:
+        for ex in self.examples if self.few_shot else []:
             # stamped like real messages (fixed time: the prompt must not change) so
             # the examples show which "sub:" goes with which subtitle language
             user = self.stamp(ex["user"], EXAMPLE_TIME) if self.style == "anime" else ex["user"]
@@ -147,8 +148,9 @@ class Persona:
 class PersonaStore:
     """Caches the persona and reloads it when the YAML file changes."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, few_shot: bool = True):
         self.path = path
+        self.few_shot = few_shot
         self._mtime = 0.0
         self._persona: Persona | None = None
 
@@ -157,5 +159,6 @@ class PersonaStore:
         if self._persona is None or mtime != self._mtime:
             data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
             self._persona = Persona.from_dict(data)
+            self._persona.few_shot = self.few_shot
             self._mtime = mtime
         return self._persona
