@@ -8,7 +8,14 @@ one Ciel runs now.
 MODEL uses the prompt the app uses today (system prompt + the persona's
 examples); MODEL@tuned uses the short prompt a model fine-tuned on
 training/ runs with (CIEL_TUNED=true). Talks to Ollama directly, not to
-the app: run it while nobody is chatting (models swap in and out of RAM).
+the app: run it while nobody is chatting. Before each model every other
+loaded model is unloaded (two 8B models + the rest didn't fit in 16 GB and
+the run took 10 h, 2026-10-29-2005-thai-eval.md); the app's model comes
+back with its next keep-warm probe.
+
+Every reply is also checked with the training data's format rules
+(training/build_dataset.check_reply): a reply the app would show without a
+voice or with a stray number counts as broken, whatever it says.
 """
 
 import argparse
@@ -25,8 +32,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ciel.config import ROOT, settings  # noqa: E402
 from ciel.llm import OllamaLLM  # noqa: E402
-from ciel.persona import PersonaStore  # noqa: E402
+from ciel.persona import PersonaStore, subtitle_language  # noqa: E402
 from ciel.speech import AnimeStream  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "training"))
+from build_dataset import check_reply  # noqa: E402
 
 SCENARIOS = ROOT / "training" / "eval.yaml"
 
@@ -45,6 +55,11 @@ async def run(spec: str, scenarios: list[dict]) -> list[list[tuple[str, float]]]
     model, _, mode = spec.partition("@")
     # don't keep an extra model pinned in RAM next to the one the app uses
     llm = OllamaLLM(dataclasses.replace(settings, model=model, keep_alive="5m"))
+    loaded = (await llm.client.get("/api/ps")).json().get("models", [])
+    for m in loaded:
+        if m["name"] not in (model, f"{model}:latest"):
+            print(f"unloading {m['name']}", flush=True)
+            await llm.client.post("/api/generate", json={"model": m["name"], "keep_alive": 0})
     persona = PersonaStore(settings.persona_path, tuned=mode == "tuned").get()
     now = datetime.now().replace(second=0, microsecond=0)
     results = []
@@ -75,11 +90,17 @@ def report(specs: list[str], scenarios: list[dict], results: dict) -> str:
             out.append("")
             for spec in specs:
                 raw, secs = results[spec][i][t]
-                out.append(f"- `{spec}` ({secs:.1f}s)")
+                problems = check_reply(raw.strip(), subtitle_language(text))
+                out.append(f"- `{spec}` ({secs:.1f}s){' ⚠️ ' + ' · '.join(problems) if problems else ''}")
                 for emotion, jp, sub in pairs(raw):
                     out.append(f"  - `[{emotion}]` {jp} → {sub}")
             out.append("")
-    out += ["## สรุป (ให้คนอ่านกรอก)", "", "| ชุด | " + " | ".join(specs) + " |", "|---|" + "---|" * len(specs)]
+    out += ["## รูปแบบคำตอบ (ตรวจอัตโนมัติด้วยกฎของข้อมูลเทรน)", "", "| โมเดล | รูปแบบถูก |", "|---|---|"]
+    for spec in specs:
+        replies = [(raw, sc["turns"][t]) for sc, rs in zip(scenarios, results[spec]) for t, (raw, _) in enumerate(rs)]
+        ok = sum(not check_reply(raw.strip(), subtitle_language(text)) for raw, text in replies)
+        out.append(f"| `{spec}` | {ok}/{len(replies)} |")
+    out += ["", "## สรุป (ให้คนอ่านกรอก)", "", "| ชุด | " + " | ".join(specs) + " |", "|---|" + "---|" * len(specs)]
     out += [f"| {i + 1}. {sc['name']} |" + " |" * len(specs) for i, sc in enumerate(scenarios)]
     return "\n".join(out) + "\n"
 

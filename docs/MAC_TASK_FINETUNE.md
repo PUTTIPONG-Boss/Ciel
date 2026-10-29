@@ -1,4 +1,4 @@
-# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.17)
+# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.18)
 
 > **วิธีใช้:** เปิด Claude Code บน Mac แล้วพิมพ์
 > `cd ~/Ciel && git pull แล้วทำตาม docs/MAC_TASK_FINETUNE.md`
@@ -15,6 +15,22 @@
 - `training/build_dataset.py`: ตรวจและสร้างไฟล์เทรน
 - `scripts/eval_thai.py` + `training/eval.yaml`: ใช้ทดสอบเทียบโมเดล
 - `CIEL_TUNED`: ให้โมเดลที่เทรนแล้วใช้ system prompt สั้นแบบเดียวกับตอนเทรน และไม่มีตัวอย่างใน prompt
+
+### รอบที่ 3 (v0.3.18) ต่อจาก `2026-10-29-2005-thai-eval.md` — ไม่ต้องเทรนใหม่
+
+รอบที่ 2 ใช้ checkpoint 100 (val ต่ำสุด) แต่ยังไม่ครบหนึ่งรอบข้อมูล รูปแบบคำตอบจึงพัง: บรรทัดญี่ปุ่นบรรทัดเดียวยาวๆ แล้วมี `>> 2` ที่ไม่มีประโยคคู่ รอบนี้ **ลอง checkpoint 300 และ 450** ที่มีอยู่แล้ว
+
+1. **Fuse checkpoint ทีละตัว:** copy `training/adapters/0000300_adapters.safetensors` (ชื่อจริงดูจาก `ls training/adapters`) ไปทับ `training/adapters/adapters.safetensors` แล้วทำขั้นที่ 5–6 ซ้ำ (fuse → แปลง GGUF แบบเดียวกับรอบที่แล้ว → `llama-quantize` Q4_K_M) แต่สร้างเป็น **`ciel-qwen3:300`** ทำเหมือนกันกับ 450 (`training/adapters/final_450.safetensors`) เป็น **`ciel-qwen3:450`**
+   - ใช้ไฟล์ชั่วคราวชื่อเดิม (`training/fused/`, `ciel-f16.gguf`) ทับได้เลย พื้นที่จะได้ไม่เพิ่ม
+2. **ทดสอบ** (`eval_thai.py` จะ unload โมเดลอื่นให้เองก่อนแต่ละโมเดล ไม่ต้องหยุด Ciel แต่ต้องทำตอนไม่มีใครคุย และ **ปิด OrbStack ระหว่างทดสอบ** ถ้าไม่ได้ใช้):
+   ```bash
+   cd ~/Ciel && git pull --ff-only && .venv/bin/python scripts/eval_thai.py qwen3:8b ciel-qwen3@tuned ciel-qwen3:300@tuned ciel-qwen3:450@tuned
+   ```
+   - รายงานมีตาราง **"รูปแบบคำตอบ"** ที่ตรวจให้อัตโนมัติ (x/24 คำตอบที่แอปจะพูดและขึ้นซับถูก) และมี ⚠️ บอกปัญหาข้างคำตอบที่พัง
+   - เวลาในวงเล็บควรกลับมาเป็นไม่กี่วินาที ถ้ายังเป็นหลักร้อย ให้ดู `memory_pressure` แล้วรายงาน
+3. **รายงาน:** ใช้ตารางสรุป ✅/⚠️/❌ เหมือนรอบที่แล้ว (เพิ่มคอลัมน์ 300 และ 450) พร้อมตารางรูปแบบคำตอบ แล้วระบุว่า checkpoint ไหนดีที่สุด และดีกว่า `qwen3:8b` หรือยัง
+4. **ห้ามเปลี่ยน `CIEL_MODEL`** เหมือนเดิม หลังทดสอบเปิดหน้าเว็บ Ciel หนึ่งครั้ง (หรือรอ keep-warm ≤ 5 นาที) เพื่อโหลด qwen3:8b กลับ
+5. **ลบไฟล์ใหญ่:** หลังได้ผลแล้ว ถามมาสเตอร์ว่าจะลบ `training/fused/` และ `training/*.gguf` (~36 GB) หรือไม่ ส่วน adapters และ cache ของ Hugging Face เก็บไว้
 
 ### รอบที่ 2 (v0.3.17) ต่อจาก `2026-10-29-finetune-trial.md`
 
