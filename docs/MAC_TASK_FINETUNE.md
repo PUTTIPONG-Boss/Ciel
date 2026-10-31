@@ -1,4 +1,4 @@
-# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.18)
+# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.19)
 
 > **วิธีใช้:** เปิด Claude Code บน Mac แล้วพิมพ์
 > `cd ~/Ciel && git pull แล้วทำตาม docs/MAC_TASK_FINETUNE.md`
@@ -15,6 +15,40 @@
 - `training/build_dataset.py`: ตรวจและสร้างไฟล์เทรน
 - `scripts/eval_thai.py` + `training/eval.yaml`: ใช้ทดสอบเทียบโมเดล
 - `CIEL_TUNED`: ให้โมเดลที่เทรนแล้วใช้ system prompt สั้นแบบเดียวกับตอนเทรน และไม่มีตัวอย่างใน prompt
+
+### รอบที่ 4 (v0.3.19) ต่อจาก `2026-10-31-1134-thai-eval.md` — ไม่ต้องเทรนใหม่ ไม่ต้อง fuse ใหม่
+
+ข้อสังเกตเรื่อง prompt ไม่ตรงกันถูกต้อง แก้ฝั่งแอปแล้ว: เมื่อ `CIEL_TUNED=true` (และ `@tuned` ใน eval) `render_chatml` จะไม่ใส่ `<think>\n\n</think>\n\n` ให้คำตอบเก่าใน history เหมือน template ของ Qwen3 ที่ mlx-lm ใช้ตอนเทรน ส่วนคำตอบที่กำลังสร้างยังมี think block เหมือนเดิม และ `eval_thai.py` จะพัก keep-warm ของ Ciel ระหว่างทดสอบให้เอง ไม่ต้องหยุด Ciel
+
+1. **ยืนยันว่าตรงกันทุก token** (ใช้ venv `~/ciel-train`) เทียบกับ template จริงของ tokenizer:
+   ```bash
+   cd ~/Ciel && ~/ciel-train/bin/python - <<'EOF'
+   import json, sys
+   sys.path.insert(0, ".")
+   from ciel.llm import render_chatml
+   from mlx_lm import load
+   _, tok = load("mlx-community/Qwen3-8B-4bit")
+   bad = 0
+   for line in open("training/data/train.jsonl", encoding="utf-8"):
+       msgs = json.loads(line)["messages"]
+       ours = render_chatml(msgs[:-1], think_in_history=False) + msgs[-1]["content"] + "<|im_end|>\n"
+       theirs = tok.apply_chat_template(msgs, tokenize=False)
+       if ours != theirs:
+           bad += 1
+           if bad == 1:
+               import difflib; print("\n".join(difflib.unified_diff(theirs.splitlines(), ours.splitlines(), lineterm="")))
+   print("mismatch:", bad)
+   EOF
+   ```
+   ต้องได้ `mismatch: 0` ถ้าไม่ใช่ 0 ให้ใส่ diff ในรายงาน แล้วหยุดแค่ขั้นนี้ (ไม่ต้องทำขั้น 2)
+2. **ทดสอบใหม่** (ปิด OrbStack ระหว่างทดสอบถ้ามาสเตอร์อนุญาต):
+   ```bash
+   cd ~/Ciel && .venv/bin/python scripts/eval_thai.py qwen3:8b ciel-qwen3:300@tuned ciel-qwen3:450@tuned
+   ```
+   - ดูตาราง "รูปแบบคำตอบ" เทียบกับรอบที่แล้ว (300: 6/24, 450: 13/24) โดยเฉพาะข้อที่ 2–3 ของแต่ละชุด ซึ่งเป็นส่วนที่ prompt เปลี่ยน
+   - ระหว่างทดสอบ ใน log ของ Ciel ต้องไม่มี `warm-up done` และเวลาต่อข้อของโมเดลที่เทรนแล้วควรเป็นหลักวินาที
+3. **รายงาน:** ตารางสรุป ✅/⚠️/❌ + ตารางรูปแบบคำตอบ เหมือนรอบที่แล้ว แล้วบอกว่ารูปแบบดีขึ้นไหม ถ้า 450 ได้รูปแบบ ≥ 20/24 แต่ความเข้าใจยังแพ้ `qwen3:8b` แปลว่าต้องเพิ่มข้อมูลเทรน ถ้ารูปแบบยังพังเกินครึ่ง แปลว่าต้องดูวิธีเทรน (lr, จำนวน layer, จำนวนรอบ)
+4. `training/fused/` (15 GB) ยังไม่ต้องใช้ในรอบนี้ ถามมาสเตอร์ก่อนลบ
 
 ### รอบที่ 3 (v0.3.18) ต่อจาก `2026-10-29-2005-thai-eval.md` — ไม่ต้องเทรนใหม่
 

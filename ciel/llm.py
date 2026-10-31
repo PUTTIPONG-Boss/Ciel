@@ -59,16 +59,22 @@ EMPTY_THINK = "<think>\n\n</think>\n\n"  # Qwen3's "no thinking" marker
 CHATML_STOP = ["<|im_end|>", "<|endoftext|>"]
 
 
-def render_chatml(messages: list[dict]) -> str:
+def render_chatml(messages: list[dict], think_in_history: bool = True) -> str:
     """The Qwen3 (ChatML) prompt, rendered by us so each turn's prompt is the
     previous prompt + reply + new message, byte for byte, and Ollama can reuse
     its cache. Ollama's own qwen3 template adds " /no_think" only to the newest
     user message and the empty think block only to the reply being generated,
     so every new turn rewrote the previous one and the prompt was re-read from
-    there (docs/model-compare/2026-10-27-1538-latency.md)."""
+    there (docs/model-compare/2026-10-27-1538-latency.md).
+
+    think_in_history=False renders old replies the way Qwen3's own template
+    does (no think block), which is how mlx-lm showed them to the model
+    fine-tuned on training/ (2026-10-31-1134-thai-eval.md). It costs the cache
+    only the previous reply: that reply was generated after the think block,
+    so the next prompt differs from there and ~150 tokens are re-read."""
     out = []
     for m in messages:
-        content = EMPTY_THINK + m["content"] if m["role"] == "assistant" else m["content"]
+        content = EMPTY_THINK + m["content"] if m["role"] == "assistant" and think_in_history else m["content"]
         out.append(f"<|im_start|>{m['role']}\n{content}<|im_end|>\n")
     return "".join(out) + "<|im_start|>assistant\n" + EMPTY_THINK
 
@@ -95,7 +101,7 @@ class OllamaLLM:
             },
         }
         if self.raw:
-            payload["prompt"] = render_chatml(messages)
+            payload["prompt"] = render_chatml(messages, think_in_history=not self.s.tuned)
             payload["raw"] = True
             payload["options"]["stop"] = CHATML_STOP
             return payload

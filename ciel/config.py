@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = ROOT / "web"
+KEEP_WARM_PAUSE = ROOT / "data" / "keep-warm.pause"  # see main.keep_warm_paused
 
 
 def _load_dotenv(path: Path) -> None:

@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import auth, tts, updater
-from .config import WEB_DIR, settings
+from .config import KEEP_WARM_PAUSE, WEB_DIR, settings
 from .llm import LLMError, create_llm
 from .persona import PersonaStore
 from .speech import AnimeStream, SpeechStream, strip_tags
@@ -78,12 +78,23 @@ async def keep_warm() -> None:
         await asyncio.sleep(30)
         now = time.monotonic()
         interval = 150 if now - started < 15 * 60 else 300
-        if generating or now - last_active < interval:
+        if generating or now - last_active < interval or keep_warm_paused():
             continue
         last_active = now
         probing = asyncio.create_task(llm.warmup(*_warmup_messages(personas.get(), last_prompt), probe_tokens=16, probe_runs=1))
         await asyncio.wait({probing})  # doesn't raise when a message cancels it
         probing = None
+
+
+def keep_warm_paused() -> bool:
+    """scripts/eval_thai.py writes an expiry time (epoch seconds) here while it
+    tests other models: a probe would load the app's model back next to them
+    and the 16 GB Mac swaps (2026-10-31-1134-thai-eval.md). It expires on its
+    own in case the script dies."""
+    try:
+        return float(KEEP_WARM_PAUSE.read_text()) > time.time()
+    except (OSError, ValueError):
+        return False
 
 
 @asynccontextmanager

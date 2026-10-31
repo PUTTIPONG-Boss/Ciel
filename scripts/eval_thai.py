@@ -30,7 +30,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ciel.config import ROOT, settings  # noqa: E402
+from ciel.config import KEEP_WARM_PAUSE, ROOT, settings  # noqa: E402
 from ciel.llm import OllamaLLM  # noqa: E402
 from ciel.persona import PersonaStore, subtitle_language  # noqa: E402
 from ciel.speech import AnimeStream  # noqa: E402
@@ -54,7 +54,7 @@ def pairs(raw: str) -> list[tuple[str, str, str]]:
 async def run(spec: str, scenarios: list[dict]) -> list[list[tuple[str, float]]]:
     model, _, mode = spec.partition("@")
     # don't keep an extra model pinned in RAM next to the one the app uses
-    llm = OllamaLLM(dataclasses.replace(settings, model=model, keep_alive="5m"))
+    llm = OllamaLLM(dataclasses.replace(settings, model=model, keep_alive="5m", tuned=mode == "tuned"))
     loaded = (await llm.client.get("/api/ps")).json().get("models", [])
     for m in loaded:
         if m["name"] not in (model, f"{model}:latest"):
@@ -111,7 +111,13 @@ async def main() -> None:
     ap.add_argument("--out", type=Path, help="report path (default docs/model-compare/<date>-thai-eval.md)")
     args = ap.parse_args()
     scenarios = yaml.safe_load(SCENARIOS.read_text(encoding="utf-8"))
-    results = {spec: await run(spec, scenarios) for spec in args.models}  # one model at a time
+    # stop the app's keep-warm from loading its model back mid-test (expires in 4 h if we die)
+    KEEP_WARM_PAUSE.parent.mkdir(exist_ok=True)
+    KEEP_WARM_PAUSE.write_text(str(time.time() + 4 * 3600))
+    try:
+        results = {spec: await run(spec, scenarios) for spec in args.models}  # one model at a time
+    finally:
+        KEEP_WARM_PAUSE.unlink(missing_ok=True)
     out = args.out or ROOT / "docs" / "model-compare" / f"{datetime.now():%Y-%m-%d-%H%M}-thai-eval.md"
     out.write_text(report(args.models, scenarios, results), encoding="utf-8")
     print(f"→ {out}")
