@@ -1,101 +1,189 @@
-# ✦ Ciel
+# Ciel
 
-ผู้ช่วย AI ส่วนตัวที่รันบนเครื่องของเราเอง มีตัวตน มีนิสัย และ (เร็วๆ นี้) มีเสียงกับร่าง Live2D
-เปิดเครื่องที่บ้านทิ้งไว้ แล้วคุยกับ Ciel ได้จากมือถือหรือคอมเครื่องไหนก็ได้
+A personal AI assistant that runs entirely on your own hardware. Ciel has a
+defined character, speaks with a voice, and is reachable from any of your
+devices over a private network.
+
+Ciel is designed around a single always-on machine at home (an Apple Silicon
+Mac with 16 GB of RAM is the reference target) serving a web app that you
+install on your phone or laptop as a PWA.
 
 ```
-📱 มือถือ / 💻 คอมเครื่องอื่น ──► Tailscale ──► 🖥️ Mac ที่บ้าน
-                                                 ├─ Ciel (หน้าเว็บ + สมอง + นิสัย)
-                                                 └─ Ollama (โมเดลภาษา)
+phone / laptop ──(Tailscale, HTTPS)──► home server
+                                        ├── Ciel   FastAPI app: web UI, WebSocket chat, persona, TTS
+                                        └── Ollama local language model (qwen3:8b by default)
 ```
 
-## เริ่มใช้งาน
+## Features
 
-> ติดตั้งบน Mac แบบให้ Claude ทำให้: ดู [docs/SETUP_MAC.md](docs/SETUP_MAC.md)
+- **Local model.** Replies come from a model served by [Ollama](https://ollama.com).
+  No conversation text leaves the machine for generation.
+- **Configurable persona.** Name, personality, speech style, rules and example
+  dialogue live in a single YAML file and reload without a restart.
+- **Streaming speech.** Replies are split into sentences as they stream and
+  synthesised one sentence at a time, so audio starts before the reply is
+  finished. Emotion tags in the model output steer voice prosody and the
+  on-screen visualiser.
+- **Anime style mode.** Ciel always speaks Japanese and shows subtitles in the
+  language you wrote in (Thai or English), each subtitle paired with its own
+  spoken line.
+- **Low latency on modest hardware.** The prompt is rendered so that every turn
+  only appends to the previous one, keeping Ollama's prompt cache valid across
+  the whole conversation. The model is pre-warmed at start-up and kept warm
+  while idle. On an M1 Air the first spoken sentence typically arrives in
+  about 3 seconds.
+- **Installable web app.** Works as a PWA on iOS and Android, with optional
+  password protection.
+- **Self-updating server.** With auto-update enabled, the server pulls new
+  commits from GitHub and restarts itself only when backend code changes.
+- **Fine-tuning kit (experimental).** Tools for building a LoRA training set,
+  training it with MLX and evaluating the result against the base model.
 
-### 1. ติดตั้ง Ollama และโหลดโมเดล
+## Requirements
 
-ดาวน์โหลดจาก <https://ollama.com> แล้วรัน:
+- Python 3.10 or newer
+- [Ollama](https://ollama.com) with a chat model installed
+- Internet access for speech synthesis (the default TTS backend is Edge TTS)
+- [Tailscale](https://tailscale.com), for access from other devices (optional)
 
-```bash
-ollama pull qwen3:8b
-```
+## Quick start
 
-> M1/M2 RAM 16GB แนะนำ `qwen3:8b` · อยากได้ภาษาไทยเป็นธรรมชาติขึ้นลองโมเดล Typhoon · RAM 32GB+ ลอง `qwen3:14b` หรือใหญ่กว่า
+1. Install Ollama and pull a model:
 
-### 2. รัน Ciel
+   ```bash
+   ollama pull qwen3:8b
+   ```
 
-**macOS / Linux**
+2. Start Ciel.
 
-```bash
-./run.sh
-```
+   macOS / Linux:
 
-**Windows**
+   ```bash
+   ./run.sh
+   ```
 
-```powershell
-.\run.ps1
-```
+   Windows:
 
-ครั้งแรกจะสร้าง `.venv`, ติดตั้ง dependency และคัดลอก `.env.example` เป็น `.env` ให้อัตโนมัติ
-จากนั้นเปิด <http://localhost:47080>
+   ```powershell
+   .\run.ps1
+   ```
 
-> ยังไม่มี Ollama? ตั้ง `CIEL_LLM=mock` ใน `.env` เพื่อลองหน้า UI ได้ก่อน
+   On first run the script creates a virtual environment, installs
+   dependencies and copies `.env.example` to `.env`.
 
-## ปรับนิสัย Ciel
+3. Open <http://localhost:47080>.
 
-ทุกอย่างอยู่ใน [`persona/ciel.yaml`](persona/ciel.yaml) — ชื่อ วิธีเรียกเรา คำลงท้าย นิสัย กฎ และตัวอย่างบทสนทนา
-แก้แล้วกดปุ่ม **＋ (แชทใหม่)** ในหน้าเว็บ มีผลทันที ไม่ต้องรีสตาร์ท
+To try the interface without a model, set `CIEL_LLM=mock` in `.env`.
 
-เคล็ดลับ: **ตัวอย่างบทสนทนา (`examples`) มีผลต่อนิสัยมากที่สุด** โดยเฉพาะกับโมเดลขนาดเล็ก
-ถ้า Ciel พูดไม่เหมือนที่อยากได้ ให้เพิ่มตัวอย่างที่ตอบแบบที่ต้องการแทนการเขียนคำบรรยายยาวๆ
+For a guided installation of a dedicated Mac server, see
+[docs/SETUP_MAC.md](docs/SETUP_MAC.md).
 
-## คุยจากมือถือ / ที่ไหนก็ได้
+### Choosing a model
 
-1. ติดตั้ง [Tailscale](https://tailscale.com) บนเครื่องที่รัน Ciel และบนมือถือ ล็อกอินบัญชีเดียวกัน
-2. บนเครื่องที่รัน Ciel:
+| Machine | Suggested model |
+|---|---|
+| Apple Silicon, 16 GB | `qwen3:8b` |
+| 32 GB or more | `qwen3:14b` or larger |
+
+The prompt format is tuned for the Qwen3 family. For other models, set
+`CIEL_RAW_PROMPT=false` to use Ollama's own chat template.
+
+## Configuration
+
+All settings are environment variables, read from `.env`. The most relevant
+ones:
+
+| Variable | Default | Description |
+|---|---|---|
+| `CIEL_LLM` | `ollama` | `ollama`, or `mock` for UI work without a model |
+| `CIEL_MODEL` | `qwen3:8b` | Ollama model name |
+| `CIEL_PERSONA` | `persona/ciel.yaml` | Persona file |
+| `CIEL_TTS` | `edge` | `edge` or `off` |
+| `CIEL_PORT` | `47080` | HTTP port |
+| `CIEL_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` to expose on the LAN |
+| `CIEL_PASSWORD` | empty | Web UI password. Recommended for remote access |
+| `CIEL_NUM_CTX` | `8192` | Model context window |
+| `CIEL_MAX_HISTORY` | `20` | Messages kept before older turns are trimmed |
+| `CIEL_AUTO_UPDATE` | `false` | Pull and apply updates from GitHub (server only) |
+| `CIEL_TUNED` | `false` | Use the short prompt for a model fine-tuned with `training/` |
+
+See [`.env.example`](.env.example) for the full list.
+
+## Persona
+
+The persona is defined in [`persona/ciel.yaml`](persona/ciel.yaml): identity,
+personality, speech habits, rules, emotion tags, voice settings and example
+conversations. Edits take effect when a new chat is started.
+
+Example conversations have the strongest effect on how the model behaves,
+especially with smaller models. When the output is not what you want, adding
+an example of the desired reply is usually more effective than adding rules.
+
+## Remote access
+
+1. Install Tailscale on the server and on your devices, signed in to the same
+   account.
+2. On the server:
+
    ```bash
    tailscale serve --bg 47080
    ```
-3. เปิด `https://<ชื่อเครื่อง>.<tailnet>.ts.net` จากมือถือ แล้วกด **เพิ่มลงหน้าจอหลัก** จะได้ Ciel เป็นแอป
 
-ใช้ HTTPS ของ Tailscale เพราะเบราว์เซอร์อนุญาตให้ใช้ไมโครโฟนเฉพาะบน HTTPS (จำเป็นตอนเพิ่มระบบเสียง)
-แนะนำให้ตั้ง `CIEL_PASSWORD` ใน `.env` ด้วย
+3. Open `https://<machine>.<tailnet>.ts.net` on your phone and add it to the
+   home screen.
 
-### เปิด Mac ทิ้งไว้
+HTTPS is required for microphone access in browsers, which is why Tailscale's
+HTTPS endpoint is used rather than the plain port.
 
-- System Settings → Battery → Options → เปิด *Prevent automatic sleeping when the display is off*
-- พับจอ: ใช้แอป **Amphetamine** (โหมด Closed-Display)
-- ถนอมแบต: ใช้ **AlDente** จำกัดการชาร์จที่ 80%
+For running a Mac as an always-on server (sleep settings, launchd service,
+auto-update), see [docs/MAC_SERVER.md](docs/MAC_SERVER.md).
 
-## เวอร์ชันและการอัปเดต
-
-- เวอร์ชันอยู่ในไฟล์ [`VERSION`](VERSION) และแสดงที่แถบล่างของหน้าเว็บเป็น `v0.1.0 · <commit>` ดูประวัติได้ที่ [CHANGELOG.md](CHANGELOG.md)
-- บนเครื่องเซิร์ฟเวอร์ ตั้ง `CIEL_AUTO_UPDATE=true` แล้ว push ขึ้น GitHub ได้เลย เซิร์ฟเวอร์จะดึงโค้ดใหม่และโหลดใหม่เอง (รายละเอียดใน [docs/MAC_SERVER.md](docs/MAC_SERVER.md))
-
-## โครงสร้างโปรเจกต์
+## Project structure
 
 ```
-ciel/            backend (FastAPI)
-  main.py        API + WebSocket แชท
-  persona.py     แปลง persona/*.yaml เป็น system prompt
-  llm.py         เชื่อม Ollama (หรือ mock) — เปลี่ยนสมองได้โดยไม่กระทบส่วนอื่น
-  updater.py     อัปเดตอัตโนมัติจาก GitHub
-  version.py     เวอร์ชัน + commit ที่กำลังรัน
-  auth.py        รหัสผ่านหน้าเว็บ
-  config.py      อ่านค่าจาก .env
-persona/         ไฟล์นิสัยของ Ciel
-web/             หน้า UI (PWA ติดตั้งเป็นแอปได้)
-  avatar.js      ร่างของ Ciel (ตอนนี้เป็นวงเวท → Live2D จะยืนอยู่หน้าวงเวทในอนาคต)
-  live2d/        ที่วางโมเดล Live2D
+ciel/                 backend (FastAPI)
+  main.py             HTTP API, WebSocket chat, warm-up and history management
+  llm.py              Ollama client and prompt rendering
+  persona.py          persona file to system prompt and messages
+  speech.py           splits streamed text into speakable segments and subtitles
+  tts.py              speech synthesis and emotion prosody
+  voice_api.py        Voice Lab endpoints
+  updater.py          GitHub auto-update
+  auth.py             password and session cookie
+  config.py           settings from the environment
+persona/              persona definitions
+web/                  web UI and PWA (chat, visualiser, Voice Lab)
+scripts/              latency measurement, model comparison, Thai evaluation
+training/             fine-tuning data, dataset builder and evaluation set
+docs/                 setup guides and measurement reports
 ```
+
+## Fine-tuning
+
+`training/` contains multi-turn training dialogues, a dataset builder that
+validates every reply against the same parser the app uses, and a held-out
+evaluation set. Training runs on Apple Silicon with MLX; the result is
+imported into Ollama and compared with the base model using
+`scripts/eval_thai.py`. This is a work in progress and the fine-tuned model
+is not yet used by default. See [training/README.md](training/README.md) and
+[docs/MAC_TASK_FINETUNE.md](docs/MAC_TASK_FINETUNE.md).
+
+## Versioning
+
+The current version is in [`VERSION`](VERSION) and is shown in the web UI
+together with the running commit. Changes are recorded in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Roadmap
 
-- [x] **เฟส 1 — Ciel คุยได้ (v0.1):** หน้า UI วงเวท, สตรีมคำตอบ, นิสัยจาก YAML, PWA, รหัสผ่าน, อัปเดตอัตโนมัติ
-- [ ] **เฟส 2 — Ciel จำได้:** เก็บประวัติแชท + ความจำระยะยาว (SQLite + vector search)
-- [x] **เฟส 3 — Ciel พูดได้ (v0.2):** TTS ทีละประโยค 3 ภาษา (ไทย/ญี่ปุ่น/อังกฤษ), แท็กอารมณ์, โหมดเสียง, วงเวทขยับตามเสียง, Voice Lab
-  - [ ] ต่อไป: เสียงเฉพาะของ Ciel ที่รันบนเครื่อง (ไม่ต้องพึ่งอินเทอร์เน็ต)
-- [ ] **เฟส 4 — Ciel ฟังได้:** กดค้างพูด (Whisper) → wake word "Ciel"
-- [ ] **เฟส 5 — Ciel มีร่าง:** Live2D + lip sync + แสดงอารมณ์ตามบทสนทนา
-- [ ] **เฟส 6 — Ciel ทำงานได้:** tools เช่น ปฏิทิน ไฟล์ ค้นเว็บ แจ้งเตือน
+- [x] Chat with a configurable persona, streaming replies, PWA, password,
+      auto-update
+- [x] Sentence-level speech in Thai, Japanese and English with emotion tags,
+      voice mode and Voice Lab
+- [x] Latency work: prompt-cache-friendly rendering, warm-up and keep-warm
+- [ ] Better Thai comprehension (LoRA fine-tuning, in progress)
+- [ ] Persistent chat history and long-term memory
+- [ ] Voice input (push-to-talk, then wake word)
+- [ ] Offline speech synthesis with a dedicated voice
+- [ ] Live2D avatar with lip sync
+- [ ] Tools: calendar, files, web search, reminders
