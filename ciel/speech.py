@@ -154,10 +154,10 @@ class AnimeStream:
     translations in the same order (so the next sentence's voice isn't held
     up by the previous one's translation):
 
-        [shy]べ、別に……。
-        大したことじゃありませんよ。
-        >> 1 ม-ไม่ได้...
-        >> 2 ไม่ใช่เรื่องใหญ่หรอกค่ะ
+        [calm]……そうですか。
+        大したことではありません。
+        >> 1 ...อย่างนั้นเหรอคะ
+        >> 2 ไม่ใช่เรื่องใหญ่ค่ะ
 
     Japanese lines become spoken segments. A '>> n' line is the subtitle of
     Japanese line n: numbering keeps each translation tied to its own

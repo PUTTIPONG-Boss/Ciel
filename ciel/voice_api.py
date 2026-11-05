@@ -9,9 +9,9 @@ from .persona import PersonaStore
 from .speech import SpeechStream
 
 SAMPLES = {
-    "th": "[calm]รับทราบค่ะ มาสเตอร์ วิเคราะห์เสร็จแล้วนะคะ [shy]เ-เรื่องแค่นี้ ไม่ใช่เรื่องใหญ่หรอกค่ะ",
-    "ja": "[calm]……おかえりなさい、マスター。[pout]別に、待ってたわけじゃないですけど。[shy]な、何ですか急に……。",
-    "en": "[calm]Understood, master. Analysis complete. [tease]Did you forget lunch again?",
+    "th": "[calm]รับทราบค่ะ มาสเตอร์ วิเคราะห์เสร็จแล้วนะคะ [concern]วันนี้พักผ่อนบ้างนะคะ",
+    "ja": "[calm]……おかえりなさい、マスター。[concern]今日は、お疲れさまでした。[shy]……ありがとうございます。",
+    "en": "[calm]Understood, master. Analysis complete. [concern]Please get some rest today.",
 }
 
 

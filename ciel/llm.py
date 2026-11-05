@@ -210,21 +210,21 @@ class MockLLM:
 
     REPLIES = [
         "[calm]รับทราบค่ะ มาสเตอร์ ตอนนี้ฉันทำงานในโหมดทดสอบ (mock) อยู่นะคะ [concern]ยังไม่ได้เชื่อมต่อกับสมองจริงค่ะ",
-        "[calm]ประมวลผลแล้วค่ะ ถ้าอยากคุยกับฉันจริงๆ ให้ตั้ง CIEL_LLM=ollama นะคะ [tease]หรือมาสเตอร์ลืมไปแล้วคะ?",
-        "[shy]เ-เรื่องแค่นี้ไม่ใช่เรื่องใหญ่หรอกค่ะ [calm]ในโหมดทดสอบ ฉันตอบได้แค่ประโยคที่เตรียมไว้เท่านั้นนะคะ",
+        "[calm]ประมวลผลแล้วค่ะ ถ้าอยากคุยกับฉันจริงๆ ให้ตั้ง CIEL_LLM=ollama นะคะ",
+        "[calm]ในโหมดทดสอบ ฉันตอบได้แค่ประโยคที่เตรียมไว้เท่านั้นค่ะ [concern]ขออภัยด้วยนะคะ",
     ]
     BY_LANGUAGE = {
-        ("ญี่ปุ่น", "japanese", "日本語"): "[calm]了解しました、マスター。今はテストモードで動いています。[shy]べ、別に大したことじゃありませんよ。",
-        ("อังกฤษ", "english"): "[calm]Understood, master. I am running in test mode right now. [tease]Did you forget lunch again?",
+        ("ญี่ปุ่น", "japanese", "日本語"): "[calm]了解しました、マスター。今はテストモードで動いています。",
+        ("อังกฤษ", "english"): "[calm]Understood, master. I am running in test mode right now. [concern]Please don't forget lunch.",
     }
 
     ANIME = [
         "[calm]……テストモードです。\n[concern]まだ本物の頭脳には繋がっていません。\n"
         ">> 1 ...โหมดทดสอบค่ะ\n>> 2 ยังไม่ได้เชื่อมต่อกับสมองจริงค่ะ",
-        "[shy]な、何ですか……。\n[tease]マスター、またお昼ご飯を忘れましたか？\n"
-        ">> 1 อ-อะไรกันคะ...\n>> 2 มาสเตอร์ ลืมกินข้าวเที่ยงอีกแล้วเหรอคะ?",
+        "[calm]……お疲れさまです。\n[concern]お昼ご飯は、食べましたか。\n"
+        ">> 1 ...เหนื่อยหน่อยนะคะ\n>> 2 กินข้าวเที่ยงหรือยังคะ",
     ]
-    ANIME_EN = "[calm]了解しました。\n[tease]今日も一緒に頑張りましょうね。\n>> 1 Understood, master.\n>> 2 Let's do our best together today."
+    ANIME_EN = "[calm]了解しました。\n今日も、よろしくお願いします。\n>> 1 Understood, master.\n>> 2 I look forward to working with you today."
 
     async def warmup(self, messages: list[dict], probe: list[dict] | None = None, probe_tokens: int = 16, probe_runs: int = 2,
                      retry_for: float = 0) -> bool:
