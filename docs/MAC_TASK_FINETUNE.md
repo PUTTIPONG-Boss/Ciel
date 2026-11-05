@@ -1,4 +1,4 @@
-# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.19)
+# งานสำหรับ Claude บน Mac: fine-tune Ciel ด้วย LoRA (v0.3.21)
 
 > **วิธีใช้:** เปิด Claude Code บน Mac แล้วพิมพ์
 > `cd ~/Ciel && git pull แล้วทำตาม docs/MAC_TASK_FINETUNE.md`
@@ -15,6 +15,52 @@
 - `training/build_dataset.py`: ตรวจและสร้างไฟล์เทรน
 - `scripts/eval_thai.py` + `training/eval.yaml`: ใช้ทดสอบเทียบโมเดล
 - `CIEL_TUNED`: ให้โมเดลที่เทรนแล้วใช้ system prompt สั้นแบบเดียวกับตอนเทรน และไม่มีตัวอย่างใน prompt
+
+### รอบที่ 5 (v0.3.21) ต่อจาก `2026-11-01-0458-thai-eval.md` — เทรนใหม่ด้วย lr 5e-5
+
+มาสเตอร์เลือกให้เทรนใหม่ด้วย learning rate **5e-5** (เดิม 1e-5) เพราะ checkpoint 450 เข้าใจภาษาไทยดีขึ้น แต่รูปแบบคำตอบถูกแค่ 13/24 และยิ่งเทรนนาน รูปแบบยิ่งดีขึ้น (100/300/450 = 2/11/13) ทั้งที่ val loss ขึ้น รอบนี้จึง **เลือก checkpoint จากคะแนนรูปแบบ ไม่ใช่ val loss** ด้วย `training/score_checkpoints.py` ซึ่งรันใน MLX ได้เลย ไม่ต้อง fuse ทุกตัว
+
+**ขออนุญาตมาสเตอร์ก่อน (ถามครั้งเดียว):**
+- Ciel ออฟไลน์ประมาณ 5.5 ชั่วโมง (เทรน ~4.5 ชม. + ให้คะแนน 9 checkpoint ~45 นาที)
+- `pip install pyyaml httpx` ลงใน `~/ciel-train` (สคริปต์ให้คะแนน import โค้ดของแอป)
+- พื้นที่ดิสก์ชั่วคราว ~36 GB ตอน fuse/แปลง checkpoint ที่ดีที่สุด เหมือนรอบก่อน
+
+1. **เตรียม:**
+   ```bash
+   cd ~/Ciel && git pull --ff-only && .venv/bin/python training/build_dataset.py
+   ~/ciel-train/bin/pip install pyyaml httpx
+   launchctl bootout gui/$UID/com.ciel.server && ollama stop qwen3:8b; ollama ps
+   ```
+2. **เทรน** (ไดเรกทอรีใหม่ จะได้ไม่ทับ adapter เดิม):
+   ```bash
+   cd ~/Ciel && nohup ~/ciel-train/bin/python -m mlx_lm.lora \
+     --model mlx-community/Qwen3-8B-4bit --train --data training/data \
+     --adapter-path training/adapters-lr5e5 --mask-prompt --grad-checkpoint \
+     --batch-size 1 --num-layers 16 --max-seq-length 1024 \
+     --learning-rate 5e-5 --iters 450 --steps-per-report 10 \
+     --steps-per-eval 150 --val-batches 10 --save-every 50 > training/train-lr5e5.log 2>&1 &
+   ```
+   - ดู log ช่วง 50 iteration แรก ถ้า train loss เป็น `nan` หรือไม่ลดลงต่ำกว่าค่าเริ่มต้น (~3) ให้หยุด (lr สูงเกินไป) แล้วรายงาน
+3. **ให้คะแนนทุก checkpoint** (Ollama ยังต้องว่าง):
+   ```bash
+   cd ~/Ciel && ~/ciel-train/bin/python training/score_checkpoints.py training/adapters-lr5e5 | tee training/score-lr5e5.log
+   ```
+   - ได้ "format x/24" ของ checkpoint 50…450 และไฟล์ `training/adapters-lr5e5/format_scores.json`
+   - ถ้ามีเวลา ให้คะแนน checkpoint 450 ของรอบ lr 1e-5 ด้วยวิธีเดียวกัน เพื่อเทียบบนเครื่องมือเดียวกัน (สร้างไดเรกทอรีชั่วคราวที่มี `adapter_config.json` ของ `training/adapters` + copy `final_450.safetensors` เป็น `0000450_adapters.safetensors`)
+4. **นำ checkpoint ที่ดีที่สุดเข้า Ollama** เป็น `ciel-qwen3:lr5e5` แบบเดียวกับรอบที่ 3 คือ copy เป็น `adapters.safetensors` ในไดเรกทอรีนั้น → fuse → `convert_hf_to_gguf.py` → `llama-quantize` Q4_K_M → `ollama create` ถ้าคะแนนเท่ากัน ให้เลือกตัวที่เทรนน้อยกว่า
+5. **เปิด Ciel กลับ แล้วทดสอบเทียบ:**
+   ```bash
+   launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ciel.server.plist
+   cd ~/Ciel && .venv/bin/python scripts/eval_thai.py qwen3:8b ciel-qwen3:450@tuned ciel-qwen3:lr5e5@tuned
+   ```
+   - ผลแต่ละรอบแกว่งมาก (10 ชุด, temperature 0.7) ถ้ามีเวลา รัน `eval_thai.py` ซ้ำอีกครั้งแล้วรวมคะแนนสองรอบ
+6. **รายงาน** `docs/model-compare/<วันที่>-lr5e5.md`:
+   - ตาราง loss (train ทุก 50, val ทุก 150)
+   - ตารางคะแนนรูปแบบทุก checkpoint
+   - ผล `eval_thai` (ตาราง ✅/⚠️/❌ + รูปแบบถูก)
+   - เวลาที่ใช้
+   - **ข้อเสนอ:** ถ้ารูปแบบ ≥ 20/24 และความเข้าใจไม่แพ้ `qwen3:8b` ในทั้งสองรอบ ให้เสนอมาสเตอร์ให้ลองใช้จริง (`CIEL_MODEL=ciel-qwen3:lr5e5`, `CIEL_TUNED=true`) ถ้ายังต่ำกว่า 20 ให้ดูว่าปัญหาที่เหลือเป็นแบบไหน (บรรทัดแรกยาว / `>> 2` ลอย / ซับผิดภาษา) เพื่อให้ฝั่ง Windows เพิ่มข้อมูลเทรนตรงจุด
+7. ห้ามเปลี่ยน `CIEL_MODEL` เอง ถามมาสเตอร์ก่อนลบ `training/fused/` และ `*.gguf`
 
 ### รอบที่ 4 (v0.3.19) ต่อจาก `2026-10-31-1134-thai-eval.md` — ไม่ต้องเทรนใหม่ ไม่ต้อง fuse ใหม่
 
