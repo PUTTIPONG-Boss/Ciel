@@ -114,7 +114,8 @@ class OllamaLLM:
     def _endpoint(self) -> str:
         return "/api/generate" if self.raw else "/api/chat"
 
-    async def warmup(self, messages: list[dict], probe: list[dict] | None = None, probe_tokens: int = 16, probe_runs: int = 2) -> None:
+    async def warmup(self, messages: list[dict], probe: list[dict] | None = None, probe_tokens: int = 16, probe_runs: int = 2,
+                     retry_for: float = 0) -> bool:
         """Load the model and put the persona prompt into Ollama's prompt cache
         before the first real message (run at server start). Must be rendered
         exactly like a real request, or the first message starts cold.
@@ -125,19 +126,38 @@ class OllamaLLM:
         of 0.65 s, docs/model-compare/2026-10-27-1907-latency.md). One
         non-streamed 4-token probe wasn't enough (2141-latency.md), so it now
         goes through stream() exactly like a reply, twice. keep_warm runs it
-        once: the GPU is only cooling there, not cold (but 2 tokens weren't enough)."""
-        try:
+        once: the GPU is only cooling there, not cold (but 2 tokens weren't enough).
+
+        `retry_for` (seconds) keeps trying while Ollama isn't ready: right after
+        a reboot it answered HTTP 500, the warm-up was logged as done anyway,
+        and the first message re-read the whole prompt (44 s,
+        docs/model-compare/2026-11-01-reboot.md). Returns True on success."""
+        attempts = 1 + int(retry_for // 10)  # one every 10 s
+        for attempt in range(attempts):
+            if attempt:
+                await asyncio.sleep(10)
+                log.info("retrying warm-up (%d/%d)", attempt + 1, attempts)
+            try:
+                if await self._warmup_once(messages, probe, probe_tokens, probe_runs):
+                    return True
+            except (httpx.HTTPError, LLMError) as e:
+                log.warning("warm-up failed: %s", e)
+        return False
+
+    async def _warmup_once(self, messages: list[dict], probe: list[dict] | None, probe_tokens: int, probe_runs: int) -> bool:
+        r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
+        if r.status_code != 200 and "think" in r.text and not self.raw:
+            self.no_think_param.add(self.s.model)
             r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
-            if r.status_code != 200 and "think" in r.text and not self.raw:
-                self.no_think_param.add(self.s.model)
-                r = await self.client.post(self._endpoint, json=self._payload(messages, self.s.model, False, 1))
-            if probe and r.status_code == 200:
-                for _ in range(probe_runs):
-                    async for _ in self.stream(probe, num_predict=probe_tokens):
-                        pass
-            log.info("warm-up done (%s, %s, HTTP %s)", self.s.model, "raw" if self.raw else "chat", r.status_code)
-        except (httpx.HTTPError, LLMError) as e:
-            log.warning("warm-up failed: %s", e)
+        if r.status_code != 200:
+            log.warning("warm-up got HTTP %s from Ollama: %s", r.status_code, r.text[:200])
+            return False
+        if probe:
+            for _ in range(probe_runs):
+                async for _ in self.stream(probe, num_predict=probe_tokens):
+                    pass
+        log.info("warm-up done (%s, %s)", self.s.model, "raw" if self.raw else "chat")
+        return True
 
     async def stream(self, messages: list[dict], model: str | None = None, num_predict: int | None = None) -> AsyncIterator[str]:
         model = model or self.s.model
@@ -206,8 +226,9 @@ class MockLLM:
     ]
     ANIME_EN = "[calm]了解しました。\n[tease]今日も一緒に頑張りましょうね。\n>> 1 Understood, master.\n>> 2 Let's do our best together today."
 
-    async def warmup(self, messages: list[dict], probe: list[dict] | None = None, probe_tokens: int = 16, probe_runs: int = 2) -> None:
-        pass
+    async def warmup(self, messages: list[dict], probe: list[dict] | None = None, probe_tokens: int = 16, probe_runs: int = 2,
+                     retry_for: float = 0) -> bool:
+        return True
 
     async def stream(self, messages: list[dict], model: str | None = None, num_predict: int | None = None) -> AsyncIterator[str]:
         last = messages[-1]["content"].lower() if messages else ""

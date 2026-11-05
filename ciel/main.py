@@ -46,7 +46,14 @@ def warm_up(persona) -> None:
     if persona is warmed:
         return
     warmed = persona
-    warming = asyncio.create_task(llm.warmup(*_warmup_messages(persona)))
+    warming = asyncio.create_task(_warm_up(persona))
+
+
+async def _warm_up(persona) -> None:
+    global warmed
+    # Ollama may still be starting (after a reboot it answered HTTP 500): keep trying for 5 min
+    if not await llm.warmup(*_warmup_messages(persona), retry_for=300) and warmed is persona:
+        warmed = None  # never got in: the next connection tries again
 
 
 def _warmup_messages(persona, prompt: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
